@@ -23,7 +23,7 @@ Taken in an interview before any code, so they are choices and not accidents.
 | Decision | Chosen | Why not the alternative |
 |---|---|---|
 | Caption | **none — pill only** | The reference has no text. With no text there is nothing to measure, so the font, `SetFont`/`GetFont` and the measuring pass all disappear — and `LayoutToggle` becomes the only one in the family that never takes a DC. |
-| Rendering | **pure GDI supersample** | GDI+ would be three calls, but it is a heavier dependency than any sibling carries. Plain aliased GDI was rejected on sight: the pill's shoulders and the knob's rim are exactly where the eye goes. |
+| Rendering | ~~**pure GDI supersample**~~ → **GDI+ primitives** (2026-07) | Originally a 4x tile + HALFTONE downscale: GDI+ would have been three calls, but was judged a heavier dependency than any sibling carried. **That premise expired.** `clsDoubleBuffer` renders geometry with GDI+ for the whole family now, so GDI+ costs this control nothing extra — and the three calls are exactly what `CToggle_RenderDefault` became. Plain aliased GDI remains rejected for the original reason: the pill's shoulders and the knob's rim are where the eye goes. |
 | Animation | **none — the knob snaps** | No sibling animates. It also keeps `rcKnob` a pure function of state rather than of time, which is what lets the self-test assert it at all. |
 | Keyboard | **focusable, Space/Enter** | The family's first. A toggle in a settings pane that cannot be reached by Tab is a real accessibility gap, and it was worth the one new pattern. |
 | Geometry | **intrinsic size, placed by justification** | "Fill the client" would have made the aspect ratio the host's problem: a badly-shaped window would give a badly-shaped pill. The pill now always looks right whatever the host does. |
@@ -77,13 +77,15 @@ already in `Learnings.md`. The local is `nRingPad`, with a comment saying why.
   re-layout after every mutator, `SetChecked` firing no callback, and `SetEnabled` actually
   disabling the window. Expectations are computed from what the control reports for its own
   defaults, so a high-DPI display cannot produce a false failure.
-- **The antialiasing is asserted, not assumed.** The whole rendering design rests on HALFTONE
-  *averaging* the supersampled tile rather than dropping pixels — and if a driver behaved
-  like `COLORONCOLOR` the control would still draw perfectly plausible output, just with hard
-  edges, and no other assertion would notice. So the self-test drives the shipped renderer
-  into an offscreen buffer and counts distinct colours over the knob's bounding box: a
-  circle's diagonals guarantee partially-covered blocks. Aliased would be exactly 2. It
-  measures 64 (the counter's cap).
+- **The antialiasing is asserted, not assumed.** If smoothing silently stopped happening the
+  control would still draw perfectly plausible output — just with hard edges — and no other
+  assertion would notice. So the self-test drives the shipped renderer into an offscreen
+  buffer and counts distinct colours over the knob's bounding box: a circle's diagonals
+  guarantee partial coverage, so unsmoothed would be exactly 2. **The assertion survived the
+  renderer it was written for**: it originally guarded HALFTONE *averaging* the supersampled
+  tile rather than dropping pixels, and now guards GDI+'s smoothing actually reaching the rim.
+  Same shape, same failure caught. It measures **57** tones — where a 4x4 block average could
+  produce at most ~17, so the replacement is better, not merely equivalent.
 - **The real `WM_PAINT` path was confirmed by capture**, since the assertion above calls the
   renderer directly and would not have caught a broken paint handler. One in-process
   `PrintWindow(PW_RENDERFULLCONTENT)` of the demo showed all eight rows rendering correctly:
@@ -106,6 +108,6 @@ already in `Learnings.md`. The local is `nRingPad`, with a comment saying why.
   self-test would have to assert the endpoints rather than the current position.
 - A `TOG_JUSTIFY_*` equivalent for the vertical axis. Nothing has asked for it; the pill is
   always centred.
-- If HALFTONE ever disappoints on some display, the drop-in replacement is a manual
-  box-average over the DIB bits — same tile, same structure, one loop instead of the
-  `StretchBlt`.
+- ~~If HALFTONE ever disappoints, hand-roll a box-average over the DIB bits.~~ Moot: there is
+  no tile any more. If GDI+ smoothing ever disappoints, the lever is
+  `clsDoubleBuffer`'s `SmoothingMode`, and it moves the whole family at once.
