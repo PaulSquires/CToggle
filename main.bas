@@ -66,8 +66,17 @@ function WinMain( _
     ' Initialize the COM library
     CoInitialize(null)
 
+    ' Initialize GDI+ (clsDoubleBuffer's rendering backend -- see DBUF_GDIPLUS). Must be
+    ' running before the first WM_PAINT builds a buffer, and must outlive every one of
+    ' them, so it brackets frmMain_Show.
+    dim as ULONG_PTR gdipToken = AfxGdipInit()
+
     ' Show the main form
     function = frmMain_Show( 0 )
+
+    ' Every window is destroyed and every clsDoubleBuffer has run its destructor by here,
+    ' so no CGp* object can still be alive. Precedes CoUninitialize: GDI+ leans on COM.
+    AfxGdipShutdown( gdipToken )
 
     ' Uninitialize the COM library
     CoUninitialize

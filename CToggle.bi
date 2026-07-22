@@ -12,13 +12,11 @@
 #define IDT_CTOGGLE_HOTTRACK   &hCB70
 #define CTOGGLE_HOTTRACK_MS    100
 
-' Supersampling factor for the antialiased render. The pill and the knob are drawn at this
-' multiple into an offscreen tile and scaled back down with a HALFTONE StretchBlt, because
-' plain GDI RoundRect/Ellipse edges are visibly jagged at this size and GDI+ was ruled out
-' to keep this control's dependencies identical to its siblings' (clsDoubleBuffer only).
-' A compile-time constant, deliberately not a runtime property: it is a quality/consistency
-' decision for the control, not a knob for the host.
-#define CTOGGLE_SUPERSAMPLE    4
+' (CTOGGLE_SUPERSAMPLE is gone. The pill and knob used to be rendered at 4x into an
+'  offscreen tile and scaled back down with a HALFTONE StretchBlt to fake antialiasing,
+'  because plain GDI RoundRect/Ellipse edges are visibly jagged at this size.
+'  clsDoubleBuffer renders through GDI+ now and antialiases the curves directly, so the
+'  tile, the constant and the traps that came with them have all been deleted.)
 
 ' Defaults. The four SIZE values are DPI-scaled at Create; every setter afterwards takes
 ' raw pixels and the caller scales (the family rule). The two THICKNESS values are NOT
@@ -343,8 +341,11 @@ end sub
 '   dialog manager.
 '
 ' ANTIALIASING
-'   The built-in painter supersamples (see CTOGGLE_SUPERSAMPLE). Setting a paint callback
-'   replaces that pass along with everything else.
+'   The built-in painter draws through clsDoubleBuffer, which renders geometry with GDI+,
+'   so the pill's shoulders and the knob's rim are antialiased. A paint callback replaces
+'   the built-in painter entirely -- but it gets the same buffer, so it inherits the same
+'   antialiased primitives rather than having to hand-roll smoothing the way the old
+'   supersampled painter did.
 '
 ' THE CONTROL HANDLE
 '   Every CToggle_* function takes the handle returned by CToggle_Create().

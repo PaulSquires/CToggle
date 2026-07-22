@@ -38,35 +38,34 @@ end function
 
 
 ' ========================================================================================
-' Draw the pill and the knob ANTIALIASED, by supersampling.
+' Draw the pill and the knob.
 '
-' Plain GDI has no antialiasing: RoundRect's shoulders and Ellipse's rim come out visibly
-' stair-stepped on a ~40x20 switch, which is exactly where the eye is drawn. GDI+ would
-' solve it in three calls but was ruled out to keep this control's dependency list identical
-' to its siblings' -- clsDoubleBuffer and nothing else.
+' This used to supersample: the whole visual was rendered into a 4x offscreen 32bpp DIB and
+' averaged back down with a HALFTONE StretchBlt, because plain GDI has no antialiasing and
+' RoundRect's shoulders and Ellipse's rim came out visibly stair-stepped on a ~40x20 switch.
+' clsDoubleBuffer draws through GDI+ now, so the curves are antialiased directly and the
+' whole tile -- roughly 145 lines, an offscreen DC, a DIB section, and the two traps below
+' -- is gone.
 '
-' So: render the whole visual at CTOGGLE_SUPERSAMPLE times its final size into an offscreen
-' 32bpp DIB, then let a HALFTONE StretchBlt average each NxN block back down to one pixel.
-' The averaging IS the antialiasing.
+' The two traps went with it, and they are recorded here because they are what the old code
+' was spending its complexity on:
 '
-' TWO TRAPS, both paid for in this routine:
+'   1. THE TILE HAD TO BE PRE-FILLED WITH BackColor. A fresh DIB section is zeroed, i.e.
+'      black, and the downscale averaged edge blocks against whatever was underneath -- so
+'      an unfilled tile blended every curve toward black and the pill wore a dark fringe
+'      that read as a drop shadow. There is no tile now, so there is no blend partner to
+'      get wrong.
 '
-'   1. THE TILE MUST BE FILLED WITH BackColor FIRST. A fresh DIB section is zeroed, i.e.
-'      black. The downscale averages edge blocks against whatever is underneath, so an
-'      unfilled tile blends every curve towards black and the pill gets a dark fringe that
-'      looks like a drop shadow. The control owns its background (the family rule), so
-'      BackColor is the correct -- and the only correct -- blend partner.
+'   2. GDI PENS ARE CENTRED ON THE PATH, so a border of width W straddled the track edge
+'      with half of it outside, and the RoundRect had to be deflated by W. GDI+ pens are
+'      centred too -- but clsDoubleBuffer now owns that correction for every control, so it
+'      is applied once there instead of hand-rolled here.
 '
-'   2. GDI PENS ARE CENTRED ON THE PATH. A border of width W straddles the track's edge,
-'      half of it outside. Deflating the RoundRect by W\2 puts the whole border inside
-'      rcTrack, which is what keeps the pill exactly the size the layout says it is.
-'
-' The tile is created and destroyed per paint rather than cached on the CTOGGLE. At 4x a
-' typical visual is ~19 KB, and a toggle repaints only on hover in/out, press, focus change
-' and flip -- never continuously. Caching it would trade a real resource-leak surface (the
-' family's first code-review priority) for an optimisation nothing is asking for.
+' What is left is three primitive calls. Nothing in this routine touches a GDI object or a
+' device context, which is what puts CToggle back on the family contract: the control owns
+' geometry and state, clsDoubleBuffer owns rendering.
 ' ========================================================================================
-private sub CToggle_RenderSupersampled( _
+private sub CToggle_RenderDefault( _
             byval pTog as CTOGGLE ptr, _
             byval b    as clsDoubleBuffer ptr, _
             byval p    as CTOGGLE_PAINTINFO ptr _
@@ -77,42 +76,6 @@ private sub CToggle_RenderSupersampled( _
     dim as long vw = p->rcVisual.right - p->rcVisual.left
     dim as long vh = p->rcVisual.bottom - p->rcVisual.top
     if (vw <= 0) orelse (vh <= 0) then exit sub
-
-    dim as HDC hdcDest = b->getMemDC()
-    if hdcDest = 0 then exit sub
-
-    dim as long ss = CTOGGLE_SUPERSAMPLE
-    dim as long sw = vw * ss
-    dim as long sh = vh * ss
-
-    ' ---- the offscreen tile -------------------------------------------------------------
-    dim as HDC hdcSS = CreateCompatibleDC( hdcDest )
-    if hdcSS = 0 then exit sub
-
-    dim as BITMAPINFO bmi
-    bmi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER)
-    bmi.bmiHeader.biWidth       = sw
-    bmi.bmiHeader.biHeight      = -sh          ' negative = top-down
-    bmi.bmiHeader.biPlanes      = 1
-    bmi.bmiHeader.biBitCount    = 32
-    bmi.bmiHeader.biCompression = BI_RGB
-
-    dim as any ptr pBits = 0
-    dim as HBITMAP hbmSS = CreateDIBSection( hdcDest, @bmi, DIB_RGB_COLORS, @pBits, NULL, 0 )
-    if hbmSS = 0 then
-        DeleteDC( hdcSS )
-        exit sub
-    end if
-    dim as HGDIOBJ hbmOld = SelectObject( hdcSS, hbmSS )
-
-    ' ---- trap 1: blend partner ----------------------------------------------------------
-    dim as RECT rcTile
-    SetRect( @rcTile, 0, 0, sw, sh )
-    dim as HBRUSH hbrBack = CreateSolidBrush( pTog->colors.BackColor )
-    if hbrBack then
-        FillRect( hdcSS, @rcTile, hbrBack )
-        DeleteObject( hbrBack )
-    end if
 
     ' ---- which three colors ------------------------------------------------------------
     ' Precedence: disabled > hot/pressed > idle. A live press renders as hot; there are no
@@ -152,94 +115,36 @@ private sub CToggle_RenderSupersampled( _
         end if
     end with
 
-    ' ---- tile-space geometry -----------------------------------------------------------
-    ' Derived from the rects rather than from ringPad, so this stays correct if the visual
-    ' bounds ever stop being a symmetric inflation of the track.
-    dim as long tx1 = (p->rcTrack.left   - p->rcVisual.left) * ss
-    dim as long ty1 = (p->rcTrack.top    - p->rcVisual.top ) * ss
-    dim as long tx2 = (p->rcTrack.right  - p->rcVisual.left) * ss
-    dim as long ty2 = (p->rcTrack.bottom - p->rcVisual.top ) * ss
-
     ' ---- the track ---------------------------------------------------------------------
-    dim as HPEN  hPen     = 0
-    dim as boolean bOwnPen = false
-    dim as long  inset    = 0
-    if pTog->nBorderThick > 0 then
-        dim as long penW = pTog->nBorderThick * ss
-        hPen = CreatePen( PS_SOLID, penW, clrBorder )
-        bOwnPen = true
-        inset = penW \ 2                       ' trap 2: keep the border inside rcTrack
-    else
-        hPen = cast( HPEN, GetStockObject( NULL_PEN ) )   ' stock: must NOT be deleted
-    end if
-
-    dim as HBRUSH hbrTrack = CreateSolidBrush( clrTrack )
-    dim as HGDIOBJ hPenOld = SelectObject( hdcSS, hPen )
-    dim as HGDIOBJ hbrOld  = SelectObject( hdcSS, hbrTrack )
-
-    ' Corner ellipse as wide and tall as the rect's HEIGHT makes both ends exact
+    ' A corner ellipse as wide and tall as the rect's HEIGHT makes both ends exact
     ' semicircles -- that, and only that, is what turns a rounded rectangle into a pill.
-    dim as long rx1 = tx1 + inset
-    dim as long ry1 = ty1 + inset
-    dim as long rx2 = tx2 - inset
-    dim as long ry2 = ty2 - inset
-    dim as long ell = ry2 - ry1
-    RoundRect( hdcSS, rx1, ry1, rx2, ry2, ell, ell )
-
-    SelectObject( hdcSS, hbrOld )
-    SelectObject( hdcSS, hPenOld )
-    DeleteObject( hbrTrack )
-    if bOwnPen then DeleteObject( hPen )
+    ' Curvature is a DIAMETER here (clsDoubleBuffer halves it to a radius internally), so
+    ' the track height goes in unmodified.
+    dim as long ell = p->rcTrack.bottom - p->rcTrack.top
+    dim as RECT rcTrack = p->rcTrack
+    b->SetBackColor( clrTrack )
+    if pTog->nBorderThick > 0 then
+        b->SetPenColor( clrBorder )
+        b->PaintRoundBorderRect( @rcTrack, ell, pTog->nBorderThick )
+    else
+        b->PaintRoundRect( @rcTrack, ell )
+    end if
 
     ' ---- the knob ----------------------------------------------------------------------
-    dim as long kx1 = (p->rcKnob.left   - p->rcVisual.left) * ss
-    dim as long ky1 = (p->rcKnob.top    - p->rcVisual.top ) * ss
-    dim as long kx2 = (p->rcKnob.right  - p->rcVisual.left) * ss
-    dim as long ky2 = (p->rcKnob.bottom - p->rcVisual.top ) * ss
-
-    dim as HBRUSH hbrKnob = CreateSolidBrush( clrKnob )
-    dim as HGDIOBJ hPenNull = SelectObject( hdcSS, GetStockObject( NULL_PEN ) )
-    hbrOld = SelectObject( hdcSS, hbrKnob )
-    Ellipse( hdcSS, kx1, ky1, kx2, ky2 )
-    SelectObject( hdcSS, hbrOld )
-    SelectObject( hdcSS, hPenNull )
-    DeleteObject( hbrKnob )
+    dim as RECT rcKnob = p->rcKnob
+    b->SetBackColor( clrKnob )
+    b->PaintEllipse( @rcKnob, 0 )
 
     ' ---- the focus ring ----------------------------------------------------------------
-    ' Drawn in the SAME tile as the pill, not separately onto the buffer afterwards, so it
-    ' is antialiased by the same downscale. Its band is reserved in the layout whether or
-    ' not we are focused, which is what stops the pill jumping when focus arrives.
+    ' Outline, never filled: it is drawn OVER the pill, and a filled round rect here would
+    ' erase everything above. Its band is reserved in the layout whether or not we are
+    ' focused, which is what stops the pill jumping when focus arrives.
     if p->isFocused andalso (pTog->nFocusThick > 0) then
-        dim as long fpen   = pTog->nFocusThick * ss
-        dim as long finset = fpen \ 2
-        dim as HPEN hPenFocus = CreatePen( PS_SOLID, fpen, pTog->colors.FocusRingColor )
-        dim as HGDIOBJ hPenSave = SelectObject( hdcSS, hPenFocus )
-        dim as HGDIOBJ hbrSave  = SelectObject( hdcSS, GetStockObject( NULL_BRUSH ) )
-        dim as long fx1 = finset
-        dim as long fy1 = finset
-        dim as long fx2 = sw - finset
-        dim as long fy2 = sh - finset
-        dim as long fell = fy2 - fy1
-        RoundRect( hdcSS, fx1, fy1, fx2, fy2, fell, fell )
-        SelectObject( hdcSS, hbrSave )
-        SelectObject( hdcSS, hPenSave )
-        DeleteObject( hPenFocus )
+        dim as RECT rcRing = p->rcVisual
+        dim as long fell = rcRing.bottom - rcRing.top
+        b->SetPenColor( pTog->colors.FocusRingColor )
+        b->PaintRoundOutline( @rcRing, fell, pTog->nFocusThick )
     end if
-
-    ' ---- downscale = antialias ----------------------------------------------------------
-    ' HALFTONE averages each source block into one destination pixel (COLORONCOLOR would
-    ' just drop pixels and we would be back to hard edges). SetBrushOrgEx after setting it
-    ' is required by the API to keep brush alignment sane.
-    dim as long nOldMode = SetStretchBltMode( hdcDest, HALFTONE )
-    SetBrushOrgEx( hdcDest, 0, 0, NULL )
-    StretchBlt( hdcDest, p->rcVisual.left, p->rcVisual.top, vw, vh, _
-                hdcSS, 0, 0, sw, sh, SRCCOPY )
-    SetStretchBltMode( hdcDest, nOldMode )
-
-    ' ---- teardown ----------------------------------------------------------------------
-    SelectObject( hdcSS, hbmOld )
-    DeleteObject( hbmSS )
-    DeleteDC( hdcSS )
 end sub
 
 
@@ -276,7 +181,7 @@ private function CToggle_OnPaint( byval hwnd as HWND ) as LRESULT
     if pTog->PaintCallback then
         pTog->PaintCallback( @p )
     else
-        CToggle_RenderSupersampled( pTog, @b, @p )
+        CToggle_RenderDefault( pTog, @b, @p )
     end if
 
     b.EndDoubleBuffer()
