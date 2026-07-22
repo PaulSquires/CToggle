@@ -10,20 +10,22 @@ it follows the same template: one real `HWND`, per-instance state in a `TYPE` in
 UserData area, one `WndProc`, host callbacks for painting and messages, one `clsDoubleBuffer`
 per `WM_PAINT`, no host globals, rects derived and never set.
 
-**Two deliberate departures from the family**, both agreed up front rather than drifted into:
+**One deliberate departure from the family:** it is the **only focusable control**.
+`WS_TABSTOP`, real focus tracking, a painted focus ring, and Space/Enter activation.
 
-1. **It is the only focusable control in the family.** `WS_TABSTOP`, real focus tracking, a
-   painted focus ring, and Space/Enter activation.
-2. **It supersamples its own rendering.** A pill and a circle drawn with plain GDI are
-   visibly jagged at ~40x20 px. GDI+ was considered and rejected so that this control's
-   dependency list stays identical to its siblings' — `clsDoubleBuffer` and nothing else.
+There used to be a second. This control shipped its own supersampled renderer — a 4x
+offscreen tile downscaled with a HALFTONE `StretchBlt` — because plain GDI left a pill and a
+circle visibly jagged at ~40x20 px, and GDI+ was rejected at the time to keep the dependency
+list identical to its siblings'. That reasoning expired in 2026-07: `clsDoubleBuffer` renders
+geometry through GDI+ for **every** control now, so the dependency argument no longer applies
+and the tile is gone. See [Rendering](#rendering).
 
 ## Files
 
 | File | Role |
 |---|---|
 | `CToggle.bi` | the control: defines, colours, paint/message info, callback typedefs, the `CTOGGLE` type, `LayoutToggle`, and the documented public API |
-| `CToggle.inc` | implementation: the supersampling renderer, the built-in painter, the `WndProc`, `Create`, and the API bodies |
+| `CToggle.inc` | implementation: the built-in painter, the `WndProc`, `Create`, and the API bodies |
 | `clsDoubleBuffer.bi` / `.inc` | the family's shared double-buffer helper (vendored copy) |
 | `main.bas`, `frmMain.bi`, `frmMain.inc` | demo harness — a settings pane of eight switches — plus the geometry self-test |
 
@@ -95,24 +97,38 @@ should stay a hairline.
 
 ## Rendering
 
-The built-in painter draws into an offscreen tile at `CTOGGLE_SUPERSAMPLE` (4x) and scales it
-back down with a **HALFTONE `StretchBlt`**. The averaging *is* the antialiasing.
+`CToggle_RenderDefault` is three calls into `clsDoubleBuffer`, which draws geometry with GDI+
+and antialiases the curves:
 
-Two traps the renderer pays for, both worth knowing if you ever touch it:
+| part | call | note |
+|---|---|---|
+| track | `PaintRoundBorderRect( rcTrack, ell, nBorderThick )` | `ell` = the track's **height**, so both ends become exact semicircles — that, and only that, is what makes a rounded rect a pill. Curvature is a *diameter*; the buffer halves it internally. |
+| knob | `PaintEllipse( rcKnob, 0 )` | filled, no rim |
+| focus ring | `PaintRoundOutline( rcVisual, fell, nFocusThick )` | **outline, never filled** — it is drawn over the pill, and a filled round rect would erase it |
 
-- **The tile must be filled with `BackColor` first.** A fresh DIB section is black, and the
-  downscale averages edge blocks against whatever is underneath — so an unfilled tile blends
-  every curve toward black and the pill grows a dark fringe that reads as a drop shadow.
-- **GDI pens are centred on the path.** A border of width W straddles the track's edge, half
-  of it outside, so the `RoundRect` is deflated by `W\2` to keep the whole border inside
-  `rcTrack`.
+Nothing in the renderer touches a GDI object or a device context. That is the point: the
+control owns geometry and state, `clsDoubleBuffer` owns rendering. This control was the one
+sibling that broke that rule.
 
-The tile is created and destroyed per paint rather than cached: at 4x a typical visual is
-~19 KB, and a toggle repaints only on hover in/out, press, focus change and flip. Caching it
-would trade a real resource-leak surface for an optimisation nothing is asking for.
+### What the old renderer was paying for
 
-**Setting a paint callback replaces the supersampling pass along with everything else.** That
-is a legitimate choice, but it is a choice — it is not free antialiasing you inherit.
+Until 2026-07 this drew into a 4x offscreen tile and downscaled it with a HALFTONE
+`StretchBlt`, because plain GDI has no antialiasing. Both of its traps are gone with it, and
+are recorded here only so nobody reintroduces them:
+
+- **The tile had to be pre-filled with `BackColor`.** A fresh DIB section is zeroed — black —
+  and the downscale averaged edge blocks against whatever was underneath, so an unfilled tile
+  blended every curve toward black and the pill wore a dark fringe that read as a drop shadow.
+- **The `RoundRect` had to be deflated by half the pen width**, because GDI pens are centred
+  on the path. GDI+ pens are centred too, but `clsDoubleBuffer` now applies that correction
+  once, for every control, instead of each one hand-rolling it.
+
+The replacement is not merely equivalent: the self-test's rim probe reports **57 distinct
+tones** where a 4x4 block average could produce at most ~17.
+
+**Setting a paint callback still replaces the built-in painter entirely** — but it now
+inherits the same antialiased primitives through the buffer it is handed, rather than having
+to hand-roll smoothing the way a callback replacing the supersampler did.
 
 ## Colours
 

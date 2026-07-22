@@ -327,16 +327,20 @@ end sub
 ' ========================================================================================
 ' Count the DISTINCT colours the real renderer produces inside the knob's bounding box.
 '
-' This guards the assumption the whole rendering design rests on: that a HALFTONE StretchBlt
-' AVERAGES the supersampled tile instead of dropping pixels. If a driver quietly behaved like
-' COLORONCOLOR, the control would still draw perfectly plausible output -- just with hard,
-' aliased edges -- and not one other assertion in this file would notice. A circle's rim is
-' the ideal probe: its diagonals guarantee partially-covered blocks, so an antialiased knob
-' yields many tones between the knob colour and the track colour, and an aliased one yields
-' exactly two.
+' This guards the assumption the whole rendering design rests on: that the knob's rim is
+' actually being SMOOTHED. It used to guard a HALFTONE StretchBlt averaging a supersampled
+' tile; it now guards GDI+ antialiasing the ellipse directly. The assertion is deliberately
+' unchanged in shape, because the failure it catches is unchanged: if smoothing silently
+' stopped happening -- a supersample that dropped pixels then, a SmoothingMode that failed
+' to apply now -- the control would still draw perfectly plausible output, just with hard
+' aliased edges, and not one other assertion in this file would notice.
 '
-' It drives the SHIPPED code path (CToggle_RenderSupersampled) into an offscreen buffer, so
-' what is measured is what a WM_PAINT would have produced.
+' A circle's rim is the ideal probe: its diagonals guarantee partial pixel coverage, so a
+' smoothed knob yields many tones between the knob colour and the track colour, and an
+' unsmoothed one yields exactly two.
+'
+' It drives the SHIPPED code path (CToggle_RenderDefault) into an offscreen buffer, so what
+' is measured is what a WM_PAINT would have produced.
 ' ========================================================================================
 private function SelfTest_KnobEdgeTones( byval h as HWND ) as long
     dim as CTOGGLE ptr pTog = GetTogglePointer(h)
@@ -363,7 +367,7 @@ private function SelfTest_KnobEdgeTones( byval h as HWND ) as long
     p.rcVisual  = pTog->rcVisual
     p.isChecked = pTog->isChecked
     p.isEnabled = true
-    CToggle_RenderSupersampled( pTog, @b, @p )
+    CToggle_RenderDefault( pTog, @b, @p )
 
     ' Collect distinct colours over the knob, one pixel of margin each way so the rim is
     ' fully inside the scanned region.
@@ -454,11 +458,12 @@ sub CToggle_SelfTest()
         "track=" & str(rcT.right - rcT.left) & "x" & str(rcT.bottom - rcT.top) )
 
     ' ---- the antialiasing is REAL, not assumed ------------------------------------------
-    ' Two distinct colours means the downscale dropped pixels instead of averaging, i.e. the
-    ' whole supersampling pass bought nothing. Real antialiasing produces dozens of tones
-    ' around the knob's rim; 4 is a deliberately conservative floor.
+    ' Exactly two distinct colours means no smoothing reached the rim at all -- the GDI+
+    ' SmoothingMode never applied, and the edges are as hard as the old GDI ones were.
+    ' Real antialiasing produces dozens of tones around the knob's rim; 4 is a deliberately
+    ' conservative floor.
     dim as long nTones = SelfTest_KnobEdgeTones( h )
-    SelfTest_Check( "knob rim is antialiased (HALFTONE averaged, did not drop pixels)", _
+    SelfTest_Check( "knob rim is antialiased (GDI+ smoothing reached the rim)", _
         nTones >= 4, "distinct tones over the knob=" & str(nTones) )
 
     ' ---- horizontal justification ------------------------------------------------------
