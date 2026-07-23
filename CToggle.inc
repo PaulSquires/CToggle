@@ -43,7 +43,7 @@ end function
 ' This used to supersample: the whole visual was rendered into a 4x offscreen 32bpp DIB and
 ' averaged back down with a HALFTONE StretchBlt, because plain GDI has no antialiasing and
 ' RoundRect's shoulders and Ellipse's rim came out visibly stair-stepped on a ~40x20 switch.
-' clsDoubleBuffer draws through GDI+ now, so the curves are antialiased directly and the
+' CBufferPaint draws through GDI+ now, so the curves are antialiased directly and the
 ' whole tile -- roughly 145 lines, an offscreen DC, a DIB section, and the two traps below
 ' -- is gone.
 '
@@ -58,16 +58,16 @@ end function
 '
 '   2. GDI PENS ARE CENTRED ON THE PATH, so a border of width W straddled the track edge
 '      with half of it outside, and the RoundRect had to be deflated by W. GDI+ pens are
-'      centred too -- but clsDoubleBuffer now owns that correction for every control, so it
+'      centred too -- but CBufferPaint now owns that correction for every control, so it
 '      is applied once there instead of hand-rolled here.
 '
 ' What is left is three primitive calls. Nothing in this routine touches a GDI object or a
 ' device context, which is what puts CToggle back on the family contract: the control owns
-' geometry and state, clsDoubleBuffer owns rendering.
+' geometry and state, CBufferPaint owns rendering.
 ' ========================================================================================
 private sub CToggle_RenderDefault( _
             byval pTog as CTOGGLE ptr, _
-            byval b    as clsDoubleBuffer ptr, _
+            byval b    as CBufferPaint ptr, _
             byval p    as CTOGGLE_PAINTINFO ptr _
             )
 
@@ -118,7 +118,7 @@ private sub CToggle_RenderDefault( _
     ' ---- the track ---------------------------------------------------------------------
     ' A corner ellipse as wide and tall as the rect's HEIGHT makes both ends exact
     ' semicircles -- that, and only that, is what turns a rounded rectangle into a pill.
-    ' Curvature is a DIAMETER here (clsDoubleBuffer halves it to a radius internally), so
+    ' Curvature is a DIAMETER here (CBufferPaint halves it to a radius internally), so
     ' the track height goes in unmodified.
     dim as long ell = p->rcTrack.bottom - p->rcTrack.top
     dim as RECT rcTrack = p->rcTrack
@@ -158,7 +158,7 @@ private function CToggle_OnPaint( byval hwnd as HWND ) as LRESULT
     ' Consume any pending layout before painting -- this is what makes layout lazy.
     if pTog->bLayoutDirty then pTog->LayoutToggle()
 
-    dim as clsDoubleBuffer b
+    dim as CBufferPaint b
     b.BeginDoubleBuffer(hwnd)
     b.SetBackColor( pTog->colors.BackColor )
     b.PaintClientRect()

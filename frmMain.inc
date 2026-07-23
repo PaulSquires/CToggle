@@ -1,5 +1,5 @@
 #include once "frmMain.bi"
-#include once "clsDoubleBuffer.bi"
+#include once "CBufferPaint.bi"
 
 
 ' One settings row: the label the form draws, and the toggle that sits at its right.
@@ -46,7 +46,7 @@ end function
 ' CSelectBar + CIconPanel pair.
 ' ========================================================================================
 function frmMain_OnPaint( byval hwnd as HWND ) as LRESULT
-    dim as clsDoubleBuffer b
+    dim as CBufferPaint b
 
     b.BeginDoubleBuffer(hwnd)
     b.SetBackColor( theme.BackColor )
@@ -353,7 +353,7 @@ private function SelfTest_KnobEdgeTones( byval h as HWND ) as long
     dim as HDC hdc = GetDC(h)
     if hdc = 0 then return 0
 
-    dim as clsDoubleBuffer b
+    dim as CBufferPaint b
     b.BeginDoubleBuffer( h, hdc, rcClient )
     b.SetBackColor( pTog->colors.BackColor )
     b.PaintClientRect()

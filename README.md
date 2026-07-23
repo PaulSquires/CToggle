@@ -7,7 +7,7 @@ when ON.
 The twelfth control in the family (`CListBox`, `CVScrollBar`, `CHScrollBar`, `CStatusBar`,
 `CTabBar`, `CTextBox`, `CMenuBar`, `CPopupMenu`, `CSplitter`, `CIconPanel`, `CSelectBar`), and
 it follows the same template: one real `HWND`, per-instance state in a `TYPE` in the `CWindow`
-UserData area, one `WndProc`, host callbacks for painting and messages, one `clsDoubleBuffer`
+UserData area, one `WndProc`, host callbacks for painting and messages, one `CBufferPaint`
 per `WM_PAINT`, no host globals, rects derived and never set.
 
 **One deliberate departure from the family:** it is the **only focusable control**.
@@ -16,7 +16,7 @@ per `WM_PAINT`, no host globals, rects derived and never set.
 There used to be a second. This control shipped its own supersampled renderer — a 4x
 offscreen tile downscaled with a HALFTONE `StretchBlt` — because plain GDI left a pill and a
 circle visibly jagged at ~40x20 px, and GDI+ was rejected at the time to keep the dependency
-list identical to its siblings'. That reasoning expired in 2026-07: `clsDoubleBuffer` renders
+list identical to its siblings'. That reasoning expired in 2026-07: `CBufferPaint` renders
 geometry through GDI+ for **every** control now, so the dependency argument no longer applies
 and the tile is gone. See [Rendering](#rendering).
 
@@ -26,7 +26,7 @@ and the tile is gone. See [Rendering](#rendering).
 |---|---|
 | `CToggle.bi` | the control: defines, colours, paint/message info, callback typedefs, the `CTOGGLE` type, `LayoutToggle`, and the documented public API |
 | `CToggle.inc` | implementation: the built-in painter, the `WndProc`, `Create`, and the API bodies |
-| `clsDoubleBuffer.bi` / `.inc` | the family's shared double-buffer helper (vendored copy) |
+| `CBufferPaint.bi` / `.inc` | the family's shared double-buffer helper (vendored copy) |
 | `main.bas`, `frmMain.bi`, `frmMain.inc` | demo harness — a settings pane of eight switches — plus the geometry self-test |
 
 Build (the toolchain is not on `PATH`, and AfxNova resolves relative to the workspace root):
@@ -97,7 +97,7 @@ should stay a hairline.
 
 ## Rendering
 
-`CToggle_RenderDefault` is three calls into `clsDoubleBuffer`, which draws geometry with GDI+
+`CToggle_RenderDefault` is three calls into `CBufferPaint`, which draws geometry with GDI+
 and antialiases the curves:
 
 | part | call | note |
@@ -107,7 +107,7 @@ and antialiases the curves:
 | focus ring | `PaintRoundOutline( rcVisual, fell, nFocusThick )` | **outline, never filled** — it is drawn over the pill, and a filled round rect would erase it |
 
 Nothing in the renderer touches a GDI object or a device context. That is the point: the
-control owns geometry and state, `clsDoubleBuffer` owns rendering. This control was the one
+control owns geometry and state, `CBufferPaint` owns rendering. This control was the one
 sibling that broke that rule.
 
 ### What the old renderer was paying for
@@ -120,7 +120,7 @@ are recorded here only so nobody reintroduces them:
   and the downscale averaged edge blocks against whatever was underneath, so an unfilled tile
   blended every curve toward black and the pill wore a dark fringe that read as a drop shadow.
 - **The `RoundRect` had to be deflated by half the pen width**, because GDI pens are centred
-  on the path. GDI+ pens are centred too, but `clsDoubleBuffer` now applies that correction
+  on the path. GDI+ pens are centred too, but `CBufferPaint` now applies that correction
   once, for every control, instead of each one hand-rolling it.
 
 The replacement is not merely equivalent: the self-test's rim probe reports **57 distinct

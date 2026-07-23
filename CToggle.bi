@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include once "clsDoubleBuffer.bi"
+#include once "CBufferPaint.bi"
 
 ' Polling timer that guarantees hot-tracking is cleared when the mouse leaves the control.
 ' WM_MOUSELEAVE (TME_LEAVE) is not reliably delivered on fast exits, so a periodic cursor
@@ -15,7 +15,7 @@
 ' (CTOGGLE_SUPERSAMPLE is gone. The pill and knob used to be rendered at 4x into an
 '  offscreen tile and scaled back down with a HALFTONE StretchBlt to fake antialiasing,
 '  because plain GDI RoundRect/Ellipse edges are visibly jagged at this size.
-'  clsDoubleBuffer renders through GDI+ now and antialiases the curves directly, so the
+'  CBufferPaint renders through GDI+ now and antialiases the curves directly, so the
 '  tile, the constant and the traps that came with them have all been deleted.)
 
 ' Defaults. The four SIZE values are DPI-scaled at Create; every setter afterwards takes
@@ -85,7 +85,7 @@ end type
 ' repeating the inset arithmetic, because SetKnobInset can change it underneath you.
 type CTOGGLE_PAINTINFO
     hToggle    as HWND                 ' the control, so the callback can query it
-    b          as clsDoubleBuffer ptr  ' the control's buffer for this repaint (no copy)
+    b          as CBufferPaint ptr  ' the control's buffer for this repaint (no copy)
     ' --- Geometry, all precomputed by LayoutToggle ---
     rcClient   as RECT                 ' the whole client area
     rcTrack    as RECT                 ' the pill
@@ -341,7 +341,7 @@ end sub
 '   dialog manager.
 '
 ' ANTIALIASING
-'   The built-in painter draws through clsDoubleBuffer, which renders geometry with GDI+,
+'   The built-in painter draws through CBufferPaint, which renders geometry with GDI+,
 '   so the pill's shoulders and the knob's rim are antialiased. A paint callback replaces
 '   the built-in painter entirely -- but it gets the same buffer, so it inherits the same
 '   antialiased primitives rather than having to hand-roll smoothing the way the old
