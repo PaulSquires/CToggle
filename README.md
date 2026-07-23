@@ -35,8 +35,9 @@ Build (the toolchain is not on `PATH`, and AfxNova resolves relative to the work
 C:\dev\tiko_editor\toolchains\FreeBASIC-1.10.1-winlibs-gcc-9.3.0\fbc64.exe -i "C:\dev" main.bas
 ```
 
-Run the self-test with `CTOGGLE_SELFTEST=1` — 32 assertions, geometry plus a check that the
-antialiasing is genuinely happening.
+Run the self-test with `CTOGGLE_SELFTEST=1` — 35 assertions: geometry, a check that the
+antialiasing is genuinely happening, and three that the dialog manager can actually reach the
+control by Tab.
 
 ## Quick start
 
@@ -156,7 +157,21 @@ Disabled colours are per-state on purpose: a disabled ON toggle must still read 
   `IsDialogMessage` route Enter to the dialog's default button first.
 - Tab *navigation* needs `IsDialogMessage` in the host's pump. Without it you still get full
   mouse behaviour and, once the control has focus, Space and Enter.
+- **Give one of your controls the focus at startup.** `IsDialogMessage` only acts when the
+  focused window is a *descendant* of the window you pass it, and when your form opens the focus
+  is on the form itself — so the **first Tab does nothing**, which reads exactly like broken
+  tabstops. A real dialog does this in `WM_INITDIALOG`; an ordinary `CWindow` host calls
+  `SetFocus( hFirstControl )` after `ShowWindow`.
 - The focus ring is drawn whenever the control has focus, including focus arriving by mouse.
+
+> **Fixed 2026-07-23 — Tab navigation never actually worked before that.** `CWindow.Create`
+> defaults its `dwExStyle` parameter to `WS_EX_CONTROLPARENT OR WS_EX_WINDOWEDGE`, and
+> `CToggle_Create` passed only `dwStyle` — so the control declared itself a *container*, the
+> dialog manager descended into it looking for tabstops, found no children, and skipped it. The
+> control's own comment said "there is no `WS_EX_CONTROLPARENT`", which was the intent and not
+> what the code did. Now passed explicitly as `0`, and asserted three ways in the self-test.
+> Note this fix is **wrong** for `CListBox`/`CTextBox`/`CNumericUpDown`/`CScrollPanel`, which
+> genuinely need the flag; see `C:\dev\Learnings.md`.
 
 ## Callbacks
 

@@ -309,7 +309,10 @@ end sub
 ' at Create), so this cannot produce a false failure on a high-DPI display.
 '
 ' What this CANNOT cover, and is therefore left to the interactive pass: the appearance of
-' the supersampled edges, hover, the press/cancel slide-off, and Tab navigation.
+' the antialiased edges, hover, and the press/cancel slide-off.
+'
+' Tab navigation WAS on that list, and that is exactly why it shipped broken -- "left to the
+' interactive pass" turned out to mean "never actually checked". It is asserted now.
 ' ========================================================================================
 private sub SelfTest_Check( byval sName as string, byval bOK as boolean, byval sDetail as string )
     gTestCount += 1
@@ -587,6 +590,40 @@ sub CToggle_SelfTest()
     SelfTest_Check( "SetJustify ignores an out-of-range value", _
         CToggle_GetJustify(h) = TOG_JUSTIFY_CENTER, "justify=" & str(CToggle_GetJustify(h)) )
 
+    ' ---- tab navigability ------------------------------------------------------------------
+    ' Added 2026-07-23, because this SHIPPED BROKEN. CWindow.Create defaults dwExStyle to
+    ' WS_EX_CONTROLPARENT OR WS_EX_WINDOWEDGE and CToggle_Create passed only dwStyle, so the
+    ' control declared itself a container; the dialog manager descended into it, found no
+    ' children, and skipped it. Tab never reached a toggle. None of the ~30 geometry assertions
+    ' above could see it, because nothing here had ever asked what the dialog manager sees.
+    dim as ulong exStyle = cast( ulong, GetWindowLongPtr( h, GWL_EXSTYLE ) )
+    SelfTest_Check( "NOT a control parent (a leaf control is a tab ITEM)", _
+        (exStyle and WS_EX_CONTROLPARENT) = 0, "exstyle=&h" & hex(exStyle) )
+
+    dim as ulong wsStyle = cast( ulong, GetWindowLongPtr( h, GWL_STYLE ) )
+    SelfTest_Check( "is a tabstop", (wsStyle and WS_TABSTOP) <> 0, "style=&h" & hex(wsStyle) )
+
+    ' The end-to-end claim rather than the flag: ask the dialog manager to walk to us. The
+    ' WS_VISIBLE bit is set directly rather than with ShowWindow -- the walk tests the style
+    ' bit, and this way there is no paint, no flash, and no dependence on whether the host runs
+    ' the self-test before or after it shows the form.
+    SetWindowLongPtr( h, GWL_STYLE, cast( LONG_PTR, wsStyle or WS_VISIBLE ) )
+    dim as HWND hFirstTab = GetNextDlgTabItem( HWND_FRMMAIN, 0, FALSE )
+    dim as boolean bReachable = false
+    dim as HWND hScan = hFirstTab
+    for i as long = 0 to 63
+        if hScan = 0 then exit for
+        if hScan = h then
+            bReachable = true
+            exit for
+        end if
+        hScan = GetNextDlgTabItem( HWND_FRMMAIN, hScan, FALSE )
+        if hScan = hFirstTab then exit for          ' wrapped all the way round
+    next
+    SetWindowLongPtr( h, GWL_STYLE, cast( LONG_PTR, wsStyle ) )
+    SelfTest_Check( "the dialog manager can reach us by Tab", bReachable, _
+        "first tab item id=" & str(GetDlgCtrlID(hFirstTab)) & " reached=" & str(bReachable) )
+
     DestroyWindow( h )
 
     dim as string s
@@ -676,6 +713,13 @@ function frmMain_Show( byval hWndParent as HWND ) as LRESULT
 
     UpdateWindow( pWindow->hWindow )
     ShowWindow( pWindow->hWindow, SW_SHOW )
+
+    ' Give the first toggle the focus. A real dialog does this in WM_INITDIALOG; an ordinary
+    ' window must do it itself, and without it IsDialogMessage ignores the FIRST Tab entirely --
+    ' it only acts when the focused window is a DESCENDANT of the window it is passed, and at
+    ' startup the focus is on the form. The symptom is "Tab does nothing until you click
+    ' something", which is indistinguishable from the tabstops being broken.
+    SetFocus( ghToggle(0) )
 
     ' Process windows events
     dim uMsg as MSG
