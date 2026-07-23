@@ -23,7 +23,7 @@ Taken in an interview before any code, so they are choices and not accidents.
 | Decision | Chosen | Why not the alternative |
 |---|---|---|
 | Caption | **none — pill only** | The reference has no text. With no text there is nothing to measure, so the font, `SetFont`/`GetFont` and the measuring pass all disappear — and `LayoutToggle` becomes the only one in the family that never takes a DC. |
-| Rendering | ~~**pure GDI supersample**~~ → **GDI+ primitives** (2026-07) | Originally a 4x tile + HALFTONE downscale: GDI+ would have been three calls, but was judged a heavier dependency than any sibling carried. **That premise expired.** `clsDoubleBuffer` renders geometry with GDI+ for the whole family now, so GDI+ costs this control nothing extra — and the three calls are exactly what `CToggle_RenderDefault` became. Plain aliased GDI remains rejected for the original reason: the pill's shoulders and the knob's rim are where the eye goes. |
+| Rendering | ~~**pure GDI supersample**~~ → **GDI+ primitives** (2026-07) | Originally a 4x tile + HALFTONE downscale: GDI+ would have been three calls, but was judged a heavier dependency than any sibling carried. **That premise expired.** `CBufferPaint` renders geometry with GDI+ for the whole family now, so GDI+ costs this control nothing extra — and the three calls are exactly what `CToggle_RenderDefault` became. Plain aliased GDI remains rejected for the original reason: the pill's shoulders and the knob's rim are where the eye goes. |
 | Animation | **none — the knob snaps** | No sibling animates. It also keeps `rcKnob` a pure function of state rather than of time, which is what lets the self-test assert it at all. |
 | Keyboard | **focusable, Space/Enter** | The family's first. A toggle in a settings pane that cannot be reached by Tab is a real accessibility gap, and it was worth the one new pattern. |
 | Geometry | **intrinsic size, placed by justification** | "Fill the client" would have made the aspect ratio the host's problem: a badly-shaped window would give a badly-shaped pill. The pill now always looks right whatever the host does. |
@@ -110,4 +110,4 @@ already in `Learnings.md`. The local is `nRingPad`, with a comment saying why.
   always centred.
 - ~~If HALFTONE ever disappoints, hand-roll a box-average over the DIB bits.~~ Moot: there is
   no tile any more. If GDI+ smoothing ever disappoints, the lever is
-  `clsDoubleBuffer`'s `SmoothingMode`, and it moves the whole family at once.
+  `CBufferPaint`'s `SmoothingMode`, and it moves the whole family at once.

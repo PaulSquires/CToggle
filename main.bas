@@ -48,7 +48,7 @@ dim shared theme as THEME_TYPE
 
 
 
-#include once "clsDoubleBuffer.inc"
+#include once "CBufferPaint.inc"
 #include once "CToggle.inc"
 #include once "frmMain.inc"
 
@@ -67,7 +67,7 @@ function WinMain( _
     ' Initialize the COM library
     CoInitialize(null)
 
-    ' Initialize GDI+ (clsDoubleBuffer's rendering backend -- see DBUF_GDIPLUS). Must be
+    ' Initialize GDI+ (CBufferPaint draws all geometry through it). Must be
     ' running before the first WM_PAINT builds a buffer, and must outlive every one of
     ' them, so it brackets frmMain_Show.
     dim as ULONG_PTR gdipToken = AfxGdipInit()
@@ -75,7 +75,7 @@ function WinMain( _
     ' Show the main form
     function = frmMain_Show( 0 )
 
-    ' Every window is destroyed and every clsDoubleBuffer has run its destructor by here,
+    ' Every window is destroyed and every CBufferPaint has run its destructor by here,
     ' so no CGp* object can still be alive. Precedes CoUninitialize: GDI+ leans on COM.
     AfxGdipShutdown( gdipToken )
 
