@@ -1,75 +1,156 @@
 # CToggle
 
-A reusable owner-drawn **toggle switch** for FreeBASIC / Win32: a rounded pill whose fill
-changes with state, and a circular knob that sits at the left end when OFF and the right end
-when ON.
+An owner-drawn toggle switch for FreeBASIC Win32 applications: a rounded pill whose fill
+changes with state, and a circular knob that sits at the left end when the switch is OFF and
+the right end when it is ON.
 
-The twelfth control in the family (`CListBox`, `CVScrollBar`, `CHScrollBar`, `CStatusBar`,
-`CTabBar`, `CTextBox`, `CMenuBar`, `CPopupMenu`, `CSplitter`, `CIconPanel`, `CSelectBar`), and
-it follows the same template: one real `HWND`, per-instance state in a `TYPE` in the `CWindow`
-UserData area, one `WndProc`, host callbacks for painting and messages, one `CBufferPaint`
-per `WM_PAINT`, no host globals, rects derived and never set.
+It is the control you reach for in a settings list, where a checkbox would work but a switch
+reads better. It takes focus, so it can be reached with Tab and operated with Space or Enter,
+and it draws itself entirely — there is no system control underneath, and nothing about its
+appearance depends on the visual style the user happens to be running. Every colour it paints
+is one you can set.
 
-**One deliberate departure from the family:** it is the **only focusable control**.
-`WS_TABSTOP`, real focus tracking, a painted focus ring, and Space/Enter activation.
+The control has no caption. It draws only the track and the knob, so a label goes beside it,
+positioned by you. There is no animation: the knob is at one end or the other.
 
-There used to be a second. This control shipped its own supersampled renderer — a 4x
-offscreen tile downscaled with a HALFTONE `StretchBlt` — because plain GDI left a pill and a
-circle visibly jagged at ~40x20 px, and GDI+ was rejected at the time to keep the dependency
-list identical to its siblings'. That reasoning expired in 2026-07: `CBufferPaint` renders
-geometry through GDI+ for **every** control now, so the dependency argument no longer applies
-and the tile is gone. See [Rendering](#rendering).
+---
 
-## Files
+## Requirements
 
-| File | Role |
+**Files to copy into your project:**
+
+| File | Purpose |
 |---|---|
-| `CToggle.bi` | the control: defines, colours, paint/message info, callback typedefs, the `CTOGGLE` type, `LayoutToggle`, and the documented public API |
-| `CToggle.inc` | implementation: the built-in painter, the `WndProc`, `Create`, and the API bodies |
-| `CBufferPaint.bi` / `.inc` | the family's shared double-buffer helper (vendored copy) |
-| `main.bas`, `frmMain.bi`, `frmMain.inc` | demo harness — a settings pane of eight switches — plus the geometry self-test |
+| `CToggle.bi` | Declarations — types, callbacks, constants, function prototypes |
+| `CToggle.inc` | Implementation |
+| `CBufferPaint.bi` | The flicker-free drawing surface the control paints through |
+| `CBufferPaint.inc` | Its implementation |
 
-Build (the toolchain is not on `PATH`, and AfxNova resolves relative to the workspace root):
+**AfxNova is required.** The control is built on `CWindow`, and `CBufferPaint` draws through
+`AfxNova\CGdiPlus.inc`. Sources include AfxNova relative to the workspace root
+(`#include once "AfxNova\CWindow.inc"`), so builds need the workspace root on the include
+path:
 
+```bash
+fbc64.exe -i "C:\dev" main.bas
 ```
-C:\dev\tiko_editor\toolchains\FreeBASIC-1.10.1-winlibs-gcc-9.3.0\fbc64.exe -i "C:\dev" main.bas
+
+**Include order.** `CToggle.inc` pulls in its own `.bi`, which pulls in `CBufferPaint.bi`. The
+two implementation files are included in this order:
+
+```freebasic
+#include once "CBufferPaint.inc"
+#include once "CToggle.inc"
 ```
 
-Run the self-test with `CTOGGLE_SELFTEST=1` — 35 assertions: geometry, a check that the
-antialiasing is genuinely happening, and three that the dialog manager can actually reach the
-control by Tab.
+**GDI+ must be running before the first repaint and must outlive the last one.** The control
+renders all of its geometry through GDI+, so bracket your message loop:
+
+```freebasic
+dim as ULONG_PTR gdipToken = AfxGdipInit()
+' ... create windows, run the message loop ...
+AfxGdipShutdown( gdipToken )
+```
+
+`AfxGdipShutdown` must come after every window is destroyed, because each repaint builds and
+tears down a `CBufferPaint`.
+
+**Never name an identifier `ok`.** GDI+ defines `Ok = 0` as a `Status` enum value in namespace
+`AfxNova`, and hosts customarily say `using AfxNova`. An existing variable, parameter or
+function called `ok` becomes a duplicate definition the moment you adopt these files. Use
+`bOK` instead.
+
+**For Tab navigation, call `IsDialogMessage` in your message pump.** The control is a tabstop,
+but only the dialog manager moves focus between tabstops:
+
+```freebasic
+do while GetMessage( @uMsg, null, 0, 0 )
+    if uMsg.message = WM_QUIT then exit do
+    if IsDialogMessage( hWndForm, @uMsg ) = 0 then
+        TranslateMessage @uMsg
+        DispatchMessage @uMsg
+    end if
+loop
+```
+
+Without it you still get full mouse behaviour, and Space and Enter still work once the control
+has focus — only Tab navigation is lost. There is no other pump obligation: the control needs
+no message filter of its own.
+
+**Give something the focus at startup.** `IsDialogMessage` acts only when the focused window is
+already a descendant of the window you pass it. A real dialog does this in `WM_INITDIALOG`; an
+ordinary window must call `SetFocus` on its first control itself. Skip it and the first Tab
+does nothing, which is indistinguishable from the tabstops being broken.
+
+---
 
 ## Quick start
 
 ```freebasic
-dim as HWND hToggle = CToggle_Create( hWndParent, IDC_MYTOGGLE )
+' Create it. The control is created zero-sized and hidden.
+dim as HWND hToggle = CToggle_Create( hWndParent, IDC_MYFORM_TOGGLE )
 
-CToggle_SetCheckChangedCallback( hToggle, @MyCheckChanged )
+' Be told when the user flips it.
+CToggle_SetCheckChangedCallback( hToggle, @MyToggle_CheckChanged )
 
-' Size it to the switch's own ideal size -- that includes the focus-ring band, so a
-' focused switch is never clipped. Valid BEFORE the control has ever been sized.
+' Set the initial state. This is silent — the callback above does not fire.
+CToggle_SetChecked( hToggle, true )
+
+' Ask how big it wants to be, then place it. GetIdealSize is valid immediately,
+' before the control has ever been sized.
 dim as long iw, ih
 CToggle_GetIdealSize( hToggle, iw, ih )
 SetWindowPos( hToggle, 0, x, y, iw, ih, SWP_NOZORDER )
-ShowWindow( hToggle, SW_SHOW )
 
-CToggle_SetChecked( hToggle, true )      ' silent: fires no callback
+ShowWindow( hToggle, SW_SHOW )
 ```
 
+And the callback:
+
 ```freebasic
-sub MyCheckChanged( byval hToggle as HWND, byval isChecked as boolean )
-    ' Only user action gets here -- a completed click, or Space/Enter.
+sub MyToggle_CheckChanged( byval hToggle as HWND, byval isChecked as boolean )
+    ' Fired only for user action: a completed click, or Space/Enter.
+    ' The control's state is already updated, so CToggle_GetChecked() = isChecked.
+    gConfig.WordWrap = isChecked
 end sub
 ```
 
-## The layout
+That is the whole minimum. Everything below is refinement.
 
-Everything derives from the client rect plus a few authored scalars. `LayoutToggle()` is the
-only producer; painting and every rect query consume it.
+---
+
+## Concepts
+
+### The handle is a real HWND
+
+`CToggle_Create` returns an ordinary window handle, and every `CToggle_*` function takes it. It
+is not an opaque type, so you can treat the control as the window it is — `SetWindowPos` to
+place and size it, `ShowWindow` to show it, `GetDlgItem` to find it by the `CtrlID` you passed
+at creation.
+
+### It is created zero-sized and hidden
+
+`CToggle_Create` gives the control the styles `WS_CHILD`, `WS_TABSTOP`, `WS_CLIPSIBLINGS` and
+`WS_CLIPCHILDREN`, and no extended style at all. `WS_VISIBLE` is deliberately absent, so a
+newly created control shows nothing until you size it and call `ShowWindow`. That lets you
+build and configure a control before it is ever seen.
+
+### Geometry is derived, never assigned
+
+The control computes three rectangles and owns all three. You influence them through the layout
+setters; you never write them.
+
+| Rect | What it is |
+|---|---|
+| `rcTrack` | The pill |
+| `rcKnob` | The circle, already at whichever end the current state calls for |
+| `rcVisual` | `rcTrack` grown on all four sides by the focus-ring band |
+
+The formulas, if you need to predict them:
 
 ```
   ringPad      = focusGap + focusThickness
-  knobDia      = trackHeight - 2*knobInset
+  knobDia      = trackHeight - 2*knobInset          (floored at 1)
 
   rcTrack.top  = clientTop + (clientH - trackHeight) \ 2        ALWAYS v-centred
   rcTrack.left = LEFT   -> clientLeft  + ringPad
@@ -80,135 +161,358 @@ only producer; painting and every rect query consume it.
   rcKnob.left  = OFF -> rcTrack.left  + knobInset
                  ON  -> rcTrack.right - knobInset - knobDia
 
-  rcVisual     = rcTrack inflated by ringPad on all four sides   ( = GetIdealSize )
+  rcVisual     = rcTrack inflated by ringPad on all four sides
 ```
 
-The pill has an **intrinsic size** and is placed inside whatever client rect it is given —
-it does not stretch to fill. `TOG_JUSTIFY_LEFT/CENTER/RIGHT` decides where horizontally;
-vertically it is always centred. On overflow the justification degrades to LEFT and the tail
-clips at the client edge: rects are computed honestly rather than squeezed, so the pill keeps
-its shape and only what is past the edge is lost.
+Layout is lazy. A setter marks the layout stale and asks for a repaint; the next paint — or any
+rect query — recomputes it. There is no begin-update / end-update pair to remember, and setting
+six properties in a row costs one layout pass, not six.
 
-Alone in the family, **`LayoutToggle` never takes a DC** — there is no text and no font, so
-nothing here is measured.
+The knob's diameter follows the track **height** and the inset, never the width. Widening the
+track lengthens the pill and leaves the knob the same size.
 
-All setters take **raw pixels**; the caller DPI-scales. Only the Create-time defaults are
-scaled for you — and the two *thickness* values are never scaled at all, because a hairline
-should stay a hairline.
+### The pill has an intrinsic size
 
-## Rendering
+It does not stretch to fill the control. Give the control a client area larger than the pill
+needs and the pill is *placed* inside it — horizontally by the justification setting, and
+always vertically centred.
 
-`CToggle_RenderDefault` is three calls into `CBufferPaint`, which draws geometry with GDI+
-and antialiases the curves:
+### The focus-ring band is always reserved
 
-| part | call | note |
-|---|---|---|
-| track | `PaintRoundBorderRect( rcTrack, ell, nBorderThick )` | `ell` = the track's **height**, so both ends become exact semicircles — that, and only that, is what makes a rounded rect a pill. Curvature is a *diameter*; the buffer halves it internally. |
-| knob | `PaintEllipse( rcKnob, 0 )` | filled, no rim |
-| focus ring | `PaintRoundOutline( rcVisual, fell, nFocusThick )` | **outline, never filled** — it is drawn over the pill, and a filled round rect would erase it |
+The ring is drawn inside a band of `focusGap + focusThickness` pixels around the track, and that
+band is reserved whether or not the control currently has focus. This is why the pill does not
+jump sideways when you Tab onto it — and it is why changing either focus-ring value changes the
+control's ideal size.
 
-Nothing in the renderer touches a GDI object or a device context. That is the point: the
-control owns geometry and state, `CBufferPaint` owns rendering. This control was the one
-sibling that broke that rule.
+`CToggle_GetIdealSize` returns those full visual bounds, ring band included. Size the control
+with it and the ring is never clipped.
 
-### What the old renderer was paying for
+### Pixels, and who scales them
 
-Until 2026-07 this drew into a 4x offscreen tile and downscaled it with a HALFTONE
-`StretchBlt`, because plain GDI has no antialiasing. Both of its traps are gone with it, and
-are recorded here only so nobody reintroduces them:
+Only the creation-time defaults are DPI-scaled for you:
 
-- **The tile had to be pre-filled with `BackColor`.** A fresh DIB section is zeroed — black —
-  and the downscale averaged edge blocks against whatever was underneath, so an unfilled tile
-  blended every curve toward black and the pill wore a dark fringe that read as a drop shadow.
-- **The `RoundRect` had to be deflated by half the pen width**, because GDI pens are centred
-  on the path. GDI+ pens are centred too, but `CBufferPaint` now applies that correction
-  once, for every control, instead of each one hand-rolling it.
+| Setting | Default | DPI-scaled at create? |
+|---|---:|---|
+| Track width | 40 | Yes |
+| Track height | 20 | Yes |
+| Knob inset | 2 | Yes |
+| Focus-ring gap | 3 | Yes |
+| Border thickness | 1 | **No** |
+| Focus-ring thickness | 1 | **No** |
 
-The replacement is not merely equivalent: the self-test's rim probe reports **57 distinct
-tones** where a 4x4 block average could produce at most ~17.
+Every setter afterwards takes raw pixels and expects **you** to scale — typically
+`pWindow->ScaleX(...)` / `ScaleY(...)`. The two thickness values should not be scaled at all: a
+hairline should stay a hairline at any DPI.
 
-**Setting a paint callback still replaces the built-in painter entirely** — but it now
-inherits the same antialiased primitives through the buffer it is handed, rather than having
-to hand-roll smoothing the way a callback replacing the supersampler did.
+### Programmatic changes are silent
 
-## Colours
+`CToggle_SetChecked` never fires the change callback. The callback reports **user** action — a
+completed click, or Space/Enter — and nothing else. This follows Win32's own `BM_SETCHECK` /
+`BN_CLICKED` split, and it means you can safely call `CToggle_SetChecked` from inside your own
+change handler without recursing.
 
-`CTOGGLE_COLORS` is a flat struct of `COLORREF` fields with defaults: three drawn parts
-(track fill, track border, knob) × two states (checked / unchecked) × three moods (idle / hot
-/ disabled), plus `BackColor` and `FocusRingColor`. Read-modify-write is Get, assign, Set.
+### How a click is decided
 
-The **ON pill looks borderless** by default because `TrackBorderColorOn*` is defaulted equal
-to the matching `TrackColorOn*`; the **OFF pill is outlined** instead, its fill close to the
-background and its border markedly lighter. That asymmetry is the look the control was drawn
-for, and a host that wants a visible ON border just sets the field.
+Pressing the left button focuses the control, then takes mouse capture. The state flips on
+**release**, and only if the press started on the control and the cursor is still over it. So
+the standard escape gesture works: press, slide off, release — nothing happens.
 
-**There are no pressed colours** — a live press renders as hot. `isPressed` is still handed to
-the paint callback, so a host that wants a distinct pressed look can draw one.
+While a press is live and the cursor has slid outside, the control stops painting as pressed
+but the gesture is not over. Slide back on and it re-arms.
 
-Disabled colours are per-state on purpose: a disabled ON toggle must still read as ON.
+Space and Enter take exactly the same path as a completed click, so the keyboard and the mouse
+cannot drift apart: both are user action, both notify.
 
-## Focus and keyboard
+### Keyboard handling is narrow on purpose
 
-- `WS_TABSTOP` on the control's own window. A click anywhere in the client focuses it.
-- **Space and Enter** flip the state and notify, exactly as a completed click does.
-- `WM_GETDLGCODE` claims `DLGC_WANTALLKEYS` **only** for those two keys, and only when asked
-  about a specific message. Claiming unconditionally would swallow Tab and break the very
-  navigation the control opted into by being a tabstop; claiming nothing would let a host's
-  `IsDialogMessage` route Enter to the dialog's default button first.
-- Tab *navigation* needs `IsDialogMessage` in the host's pump. Without it you still get full
-  mouse behaviour and, once the control has focus, Space and Enter.
-- **Give one of your controls the focus at startup.** `IsDialogMessage` only acts when the
-  focused window is a *descendant* of the window you pass it, and when your form opens the focus
-  is on the form itself — so the **first Tab does nothing**, which reads exactly like broken
-  tabstops. A real dialog does this in `WM_INITDIALOG`; an ordinary `CWindow` host calls
-  `SetFocus( hFirstControl )` after `ShowWindow`.
-- The focus ring is drawn whenever the control has focus, including focus arriving by mouse.
+The control answers `WM_GETDLGCODE` with `DLGC_WANTALLKEYS` only for Space and Enter, and only
+when the dialog manager is asking about one specific message. Claiming keys unconditionally
+would swallow Tab and break the very navigation the control opted into by being a tabstop;
+claiming nothing would let `IsDialogMessage` route Enter to your dialog's default button before
+the control ever saw it.
 
-> **Fixed 2026-07-23 — Tab navigation never actually worked before that.** `CWindow.Create`
-> defaults its `dwExStyle` parameter to `WS_EX_CONTROLPARENT OR WS_EX_WINDOWEDGE`, and
-> `CToggle_Create` passed only `dwStyle` — so the control declared itself a *container*, the
-> dialog manager descended into it looking for tabstops, found no children, and skipped it. The
-> control's own comment said "there is no `WS_EX_CONTROLPARENT`", which was the intent and not
-> what the code did. Now passed explicitly as `0`, asserted three ways in the self-test, and
-> confirmed by an interactive pass.
-> Note this fix is **wrong** for `CListBox`/`CTextBox`/`CNumericUpDown`/`CScrollPanel`, which
-> genuinely need the flag; see `C:\dev\Learnings.md`.
+### Enabling and disabling is real, not cosmetic
+
+`CToggle_SetEnabled` calls `EnableWindow`. A disabled window receives no mouse input at all and
+the dialog manager's Tab skips it, so there is no way for a click or a keystroke to get past a
+cosmetic check. If you call `EnableWindow` on the control directly, the control notices and
+greys itself, so the two routes cannot disagree.
+
+Disabling does **not** change the checked state. A disabled ON switch still reads as ON, which
+is why the colour struct carries separate disabled colours for each state.
+
+### Lifetime
+
+The control frees itself when its window is destroyed. It owns no host resources: no font, no
+tooltip window, nothing to release. Destroy the parent and you are done.
+
+---
+
+## Behaviour and limits
+
+Firm properties of the control, not settings:
+
+- **No caption and no font.** There is no `SetFont` / `GetFont`. Nothing about this control's
+  geometry is measured, so it never takes a device context. Put your label beside it.
+- **No tooltip support.** There is no tooltip callback and no tooltip window is created. If you
+  want a tip, add your own tool over the control's `HWND`.
+- **No animation.** The knob is at one end or the other; it does not slide.
+- **No tri-state.** Checked or unchecked.
+- **No hit-test function.** The entire client rectangle is the hit area, so a hit test could
+  only ever return TRUE for points the caller already knows are inside.
+- **Double-clicks are not special.** `CS_DBLCLKS` is deliberately off, so a rapid second click
+  arrives as an ordinary down/up pair and flips the switch again. That is what you want from a
+  control whose job is to flip once per click — with `CS_DBLCLKS` on, every second rapid click
+  would arrive as `WM_LBUTTONDBLCLK` and be dropped.
+- **Arrow keys are not handled.** Only Space and Enter activate the control. Left/right as
+  off/on is a common switch idiom, but claiming the arrows would take them away from the dialog
+  manager's navigation.
+- **The right mouse button is reported, never acted on.** A context menu is your business. No
+  capture is taken for the right button, so a right-up can arrive without a matching down.
+- **Invalid justification values are ignored**, leaving the current setting in place, rather
+  than laying the pill out somewhere unexpected.
+- **When the control is too small for the pill, justification degrades to LEFT and the pill
+  clips at the edge.** Rects are computed honestly rather than squeezed, so the pill keeps its
+  proper shape and only the part past the edge is lost. The same applies vertically: a client
+  shorter than the track clips top and bottom rather than deforming the pill.
+
+---
+
+## API reference
+
+### Creation
+
+| Function | Description |
+|---|---|
+| `CToggle_Create( hWndParent, CtrlID ) as HWND` | Creates the control as a child of `hWndParent` and returns its window handle. `CtrlID` becomes the window's `GWLP_ID`, so `GetDlgItem` finds it. Created zero-sized and hidden — size it with `CToggle_GetIdealSize`, place it with `SetWindowPos`, then `ShowWindow`. |
+
+### State
+
+| Function | Description |
+|---|---|
+| `CToggle_GetChecked( hToggle ) as boolean` | TRUE when the switch is ON (knob at the right end). |
+| `CToggle_SetChecked( hToggle, isChecked )` | Sets the state and repaints. **Silent** — does not fire the change callback. No-op when the state already matches. |
+| `CToggle_GetEnabled( hToggle ) as boolean` | The control's enabled state. |
+| `CToggle_SetEnabled( hToggle, isEnabled )` | Enables or disables through `EnableWindow`, so input really stops. Disabling clears any hover and cancels a live press immediately rather than waiting for the next mouse move. Does not change the checked state. |
+| `CToggle_GetFocused( hToggle ) as boolean` | TRUE while the control has keyboard focus and is painting its focus ring. |
+| `CToggle_Refresh( hToggle )` | Marks the layout stale and requests a repaint with background erase. Rarely needed — every setter does this for you. |
+
+### Layout
+
+All setters take **raw pixels**; you do the DPI scaling. Each marks the layout stale and
+requests a repaint.
+
+| Function | Description |
+|---|---|
+| `CToggle_GetTrackSize( hToggle, byref nTrackWidth, byref nTrackHeight )` | The pill's current size in pixels. |
+| `CToggle_SetTrackSize( hToggle, nTrackWidth, nTrackHeight )` | Sets the pill's size. Each dimension is clamped to a minimum of 1. Changing the height also changes the knob's diameter. |
+| `CToggle_GetKnobInset( hToggle ) as long` | The gap between the track edge and the knob, on all four sides. |
+| `CToggle_SetKnobInset( hToggle, nKnobInset )` | Sets that gap; clamped to a minimum of 0. An inset larger than half the track height yields a knob of diameter 1 rather than an invalid shape. |
+| `CToggle_GetBorderThickness( hToggle ) as long` | The track's border thickness. |
+| `CToggle_SetBorderThickness( hToggle, nThickness )` | Sets it; clamped to a minimum of 0, where **0 means no border at all**. Repaints but never re-lays-out — the border is drawn inside the track, so it moves nothing. Do not DPI-scale this value. |
+| `CToggle_GetFocusRing( hToggle, byref nGap, byref nThickness )` | The gap from the track to the focus ring, and the ring's own thickness. |
+| `CToggle_SetFocusRing( hToggle, nGap, nThickness )` | Sets both; each clamped to a minimum of 0. **Both change the ideal size**, because the ring's band is reserved whether or not the control has focus. Do not DPI-scale the thickness. |
+| `CToggle_GetJustify( hToggle ) as long` | The current horizontal placement: `TOG_JUSTIFY_LEFT`, `TOG_JUSTIFY_CENTER` (the default) or `TOG_JUSTIFY_RIGHT`. |
+| `CToggle_SetJustify( hToggle, nJustify )` | Places the pill horizontally when the control is wider than the pill needs. Values outside the three constants are ignored. The pill is **always** vertically centred; there is no vertical justification. |
+| `CToggle_GetIdealSize( hToggle, byref nWidth, byref nHeight )` | The full visual bounds — `(trackW + 2×ringPad) × (trackH + 2×ringPad)`, where `ringPad = focusGap + focusThickness`. Computed from the scalars rather than from the layout, so it is **valid before the control has ever been sized**. |
+| `CToggle_GetTrackRect( hToggle, byref rc ) as boolean` | The pill's rectangle in client coordinates. |
+| `CToggle_GetKnobRect( hToggle, byref rc ) as boolean` | The knob's rectangle, already positioned for the current state. |
+| `CToggle_GetVisualRect( hToggle, byref rc ) as boolean` | The track inflated by the focus-ring band. |
+
+The three rect queries force any pending layout first, so their results are always current. Each
+returns FALSE — leaving `rc` empty — when the control has no client area yet, which is the case
+between `CToggle_Create` and the first `SetWindowPos`.
+
+### Appearance
+
+| Function | Description |
+|---|---|
+| `CToggle_GetColors( hToggle, pColors as CTOGGLE_COLORS ptr )` | Fills your struct with the control's current colours. |
+| `CToggle_SetColors( hToggle, pColors as CTOGGLE_COLORS ptr )` | Copies the whole struct in and repaints with background erase. |
+
+To change one colour, read-modify-write:
+
+```freebasic
+dim as CTOGGLE_COLORS clrs
+CToggle_GetColors( hToggle, @clrs )
+clrs.TrackColorOn       = BGR( 62,140, 90)
+clrs.TrackBorderColorOn = BGR( 62,140, 90)
+CToggle_SetColors( hToggle, @clrs )
+```
+
+### Callback registration
+
+| Function | Description |
+|---|---|
+| `CToggle_SetPaintCallback( hToggle, usersub )` | Installs a renderer that draws the whole control **instead of** the built-in painter. Repaints. |
+| `CToggle_SetMessageCallback( hToggle, userfunc )` | Installs an observer for mouse, focus and key messages. |
+| `CToggle_SetCheckChangedCallback( hToggle, usersub )` | Installs the handler told when the **user** flips the switch. |
+
+All three are optional and independent.
+
+---
+
+## Colors
+
+The colour surface is one flat struct, `CTOGGLE_COLORS`, with twenty `COLORREF` fields: three
+drawn parts (track fill, track border, knob) × two states (ON / OFF) × three moods (idle, hot,
+disabled), plus the control's own background and the focus ring. Every field ships with a usable
+dark-theme default, so a control you never call `CToggle_SetColors` on still looks right.
+
+| Field | Paints |
+|---|---|
+| `BackColor` | The control's own client area, behind the pill |
+| `FocusRingColor` | The focus ring, drawn only while the control has focus |
+| `TrackColorOn` | Pill fill, ON, idle |
+| `TrackColorOnHot` | Pill fill, ON, mouse over or pressed |
+| `TrackColorOnDisabled` | Pill fill, ON, disabled |
+| `TrackBorderColorOn` | Pill border, ON, idle |
+| `TrackBorderColorOnHot` | Pill border, ON, mouse over or pressed |
+| `TrackBorderColorOnDisabled` | Pill border, ON, disabled |
+| `KnobColorOn` | Knob, ON, idle |
+| `KnobColorOnHot` | Knob, ON, mouse over or pressed |
+| `KnobColorOnDisabled` | Knob, ON, disabled |
+| `TrackColorOff` | Pill fill, OFF, idle |
+| `TrackColorOffHot` | Pill fill, OFF, mouse over or pressed |
+| `TrackColorOffDisabled` | Pill fill, OFF, disabled |
+| `TrackBorderColorOff` | Pill border, OFF, idle |
+| `TrackBorderColorOffHot` | Pill border, OFF, mouse over or pressed |
+| `TrackBorderColorOffDisabled` | Pill border, OFF, disabled |
+| `KnobColorOff` | Knob, OFF, idle |
+| `KnobColorOffHot` | Knob, OFF, mouse over or pressed |
+| `KnobColorOffDisabled` | Knob, OFF, disabled |
+
+### Which colour wins
+
+The built-in painter picks one fill, one border and one knob colour per repaint, in this
+precedence:
+
+```
+disabled   >   hot or pressed   >   idle
+```
+
+within whichever of the two state groups (ON or OFF) currently applies.
+
+**There are no pressed colours.** A live press renders as hot, which reads correctly for a
+control that flips on release. The pressed flag is still handed to a paint callback, so a custom
+renderer can draw a distinct pressed look if it wants one.
+
+**Disabled colours are per-state on purpose:** a disabled ON switch must still read as ON.
+
+### Why the ON pill looks borderless by default
+
+`TrackBorderColorOn*` defaults to exactly the matching `TrackColorOn*`, so the ON pill reads as
+a solid shape with no outline. The OFF pill is distinguished the other way: its fill sits close
+to the background and its border is markedly lighter, so it reads as an outline. That asymmetry
+is the intended look. If you want a visible ON border, set the field to something different from
+the fill.
+
+### What the painter draws
+
+| Part | Shape |
+|---|---|
+| Track | A rounded rectangle whose corner ellipse is as wide and tall as the rect's own height. That, and only that, is what makes both ends exact semicircles and turns a rounded rectangle into a pill. Drawn with a border when the border thickness is above 0, filled without one at 0. |
+| Knob | A filled ellipse, no rim. |
+| Focus ring | A rounded **outline** over `rcVisual`, drawn only while the control has focus and the ring thickness is above 0. Never a fill — it is drawn over the pill, and a filled shape there would erase it. |
+
+All of it goes through `CBufferPaint`, which renders geometry with GDI+, so the pill's shoulders
+and the knob's rim are antialiased. A paint callback gets that same buffer and inherits the same
+antialiased primitives.
+
+---
 
 ## Callbacks
 
-| Callback | Fires |
+### Check changed
+
+```freebasic
+type TOG_CheckChangedCallbackSub as sub( byval hToggle as HWND, byval isChecked as boolean )
+```
+
+The user flipped the switch — a completed click, or Space/Enter. Fires **after** the control's
+state is updated, so `CToggle_GetChecked( hToggle )` already equals `isChecked`.
+
+It does not fire for `CToggle_SetChecked`, which is what makes it safe to call that setter from
+inside this handler.
+
+### Paint
+
+```freebasic
+type TOG_PaintCallbackSub as sub( byval p as CTOGGLE_PAINTINFO ptr )
+```
+
+Draws the whole control **instead of** the built-in painter. Paint through `p->b`, the control's
+double buffer for this repaint — do not touch the screen DC.
+
+The control has already filled the client with `BackColor` before calling you, so a callback
+that only wants to add something on top does not have to repaint the background.
+
+`CTOGGLE_PAINTINFO` carries everything you need:
+
+| Field | Meaning |
 |---|---|
-| `TOG_CheckChangedCallbackSub` | the **user** flipped it — click, Space or Enter. `CToggle_SetChecked` is silent. |
-| `TOG_MessageCallbackFunc` | mouse, focus and key messages. Return TRUE to suppress default handling. |
-| `TOG_PaintCallbackSub` | draw the whole control instead of the built-in painter. |
+| `hToggle` | The control, so the callback can query it |
+| `b` | The control's `CBufferPaint` for this repaint (borrowed, not owned) |
+| `rcClient` | The whole client area |
+| `rcTrack` | The pill |
+| `rcKnob` | The circle, already at the end the current state calls for |
+| `rcVisual` | `rcTrack` inflated by the focus-ring padding |
+| `isChecked` | ON when TRUE |
+| `isHot` | The mouse is over the control |
+| `isPressed` | A live left press **and** the cursor is still inside |
+| `isEnabled` | The control's enabled state |
+| `isFocused` | Draw a focus ring when TRUE |
 
-**The message callback's result is IGNORED for three messages.** `WM_LBUTTONUP`, because the
-control holds capture across a press and the up-message is what releases it — suppressing it
-would strand capture. `WM_SETFOCUS` and `WM_KILLFOCUS`, because focus is a fact the system
-reports, not an action to veto.
+All three rects are precomputed. Use them as given — in particular, do not re-derive the knob
+from the track by repeating the inset arithmetic, because the inset can change underneath you.
 
-## Two traps worth knowing
+`isPressed` goes FALSE when the cursor slides off during a press, without the gesture ending.
+That is deliberate: the press should stop *looking* armed the moment the cursor leaves.
 
-**`CS_DBLCLKS` is deliberately NOT set** — the opposite call from `CSelectBar` and
-`CSplitter`. With it, the second of two rapid clicks arrives as `WM_LBUTTONDBLCLK` *instead
-of* a second `WM_LBUTTONDOWN`; for a control whose whole job is to flip on every click, that
-would silently swallow every second rapid click. `CIconPanel` omits it for the same reason on
-its toggle items — here the control *is* a toggle, so the reasoning is stronger still.
+> **A paint callback that fills a rectangle covering the whole control will erase everything
+> under it.** Draw your additions, not a background — the control has already painted one.
 
-**`CToggle_SetEnabled` calls `EnableWindow`**, not just a cosmetic flag. A disabled window
-receives no mouse input and the dialog manager's Tab skips it, so there is no way for a click
-or a keystroke to sneak past the greyed appearance. `WM_ENABLE` keeps the control's own flag
-true to the window's real state, so a host that reaches for `EnableWindow` directly still gets
-the greyed rendering.
+### Message
 
-## Not implemented, deliberately
+```freebasic
+type TOG_MessageCallbackFunc as function( byval m as CTOGGLE_MESSAGEINFO ptr ) as boolean
+```
 
-- **No animation** — the knob snaps. No sibling animates anything, and it keeps the knob rect
-  a pure function of state rather than of time.
-- **No caption and no font.** The control draws only the pill; a host that wants a label puts
-  one beside it. This is why there is no `SetFont` and no measuring pass.
-- **No tooltips** — no tooltip window is created. A host can add its own tool over the HWND.
-- **No `CToggle_HitTest`.** The whole client rect is the hit area, so a hit test could only
-  ever be `PtInRect(client)`.
-- **No tri-state / indeterminate**, and **no arrow-key handling** (Left=off / Right=on would
-  mean claiming the arrows away from the dialog manager's navigation).
+Observes messages as they arrive. Return TRUE to suppress the control's own handling of that
+message, FALSE to let it proceed.
+
+`CTOGGLE_MESSAGEINFO` carries `hToggle`, `uMsg`, `wParam` and `lParam`.
+
+Mouse messages, focus changes (`WM_SETFOCUS`, `WM_KILLFOCUS`) and `WM_KEYDOWN` are all reported
+here.
+
+**Your return value is ignored for three messages:**
+
+| Message | Why |
+|---|---|
+| `WM_LBUTTONUP` | The control holds mouse capture across a press, and the up-message is what releases it. A callback that suppressed it would strand the capture and route every later click to this control. Suppressing `WM_LBUTTONDOWN` suppresses the press itself, which *is* allowed — no capture has been taken at that point. |
+| `WM_SETFOCUS` | Focus is a fact the system reports, not an action to veto. The state is already updated by the time you are called. A host that does not want the control focusable must not make it a tabstop. |
+| `WM_KILLFOCUS` | As above. |
+
+For every other message, TRUE suppresses the default handling.
+
+---
+
+## Constants
+
+```freebasic
+enum
+    TOG_JUSTIFY_LEFT = 0
+    TOG_JUSTIFY_CENTER      ' the default
+    TOG_JUSTIFY_RIGHT
+end enum
+```
+
+| Constant | Value | Meaning |
+|---|---:|---|
+| `CTOGGLE_DEFAULT_TRACKW` | 40 | Default track width, DPI-scaled at create |
+| `CTOGGLE_DEFAULT_TRACKH` | 20 | Default track height, DPI-scaled at create |
+| `CTOGGLE_DEFAULT_KNOBINSET` | 2 | Default knob inset, DPI-scaled at create |
+| `CTOGGLE_DEFAULT_BORDERTHICK` | 1 | Default border thickness, never DPI-scaled |
+| `CTOGGLE_DEFAULT_FOCUSGAP` | 3 | Default focus-ring gap, DPI-scaled at create |
+| `CTOGGLE_DEFAULT_FOCUSTHICK` | 1 | Default focus-ring thickness, never DPI-scaled |
