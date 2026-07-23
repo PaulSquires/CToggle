@@ -506,12 +506,27 @@ function CToggle_Create( byval hWndParent as HWND, byval CtrlID as long ) as HWN
 
     dim pWindow as CWindow ptr = New CWindow
 
-    ' WS_TABSTOP: this control takes focus, unlike every one of its siblings. There is no
+    ' WS_TABSTOP: this control takes focus, unlike most of its siblings. There is no
     ' WS_EX_CONTROLPARENT because there is no child to see through to -- the tabstop is on
     ' this window itself.
+    '
+    ' THE TRAILING 0 IS THAT SENTENCE'S IMPLEMENTATION, AND IT WAS MISSING UNTIL 2026-07-23.
+    ' CWindow.Create defaults its dwExStyle parameter to WS_EX_CONTROLPARENT OR
+    ' WS_EX_WINDOWEDGE, so passing only dwStyle -- as this call did -- silently declared the
+    ' control a CONTAINER. The dialog manager then descended into it looking for tabstops,
+    ' found no children, and SKIPPED it: Tab never landed on a CToggle, in this repo's demo
+    ' or in any host. The comment above was written as an intention and read for months as a
+    ' statement of fact; nothing at the call site showed an extended style being chosen at all.
+    '
+    ' DO NOT COPY THIS INTO A WRAP-A-REAL-CHILD CONTROL. CListBox, CTextBox, CNumericUpDown
+    ' and CScrollPanel all NEED WS_EX_CONTROLPARENT, because their tabstop lives on an inner
+    ' child; passing 0 there would make them unreachable instead. The test is "does this
+    ' window have children the dialog manager should find?", not "is this a control?".
+    ' Full write-up in C:\dev\Learnings.md.
     dim as HWND hCtrl = _
             pWindow->Create( hWndParent, "", @CToggle_WndProc, _
-            0, 0, 0, 0, WS_CHILD or WS_TABSTOP or WS_CLIPSIBLINGS or WS_CLIPCHILDREN _
+            0, 0, 0, 0, WS_CHILD or WS_TABSTOP or WS_CLIPSIBLINGS or WS_CLIPCHILDREN, _
+            0 _
             )
 
     ' NOTE: CS_DBLCLKS is deliberately NOT enabled here -- see the WndProc header. It would
