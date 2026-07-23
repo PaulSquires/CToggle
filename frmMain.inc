@@ -249,10 +249,13 @@ end function
 ' ========================================================================================
 ' CToggle_SquarePaintCallback -- row 4's own renderer, REPLACING the built-in painter.
 '
-' It deliberately draws a SQUARE switch with plain GDI rects, which makes two things visible
-' at once: that a callback owns the whole look, and that it also gives up the supersampling
-' pass the built-in painter runs (there are no curves here to alias, which is rather the
-' point of choosing a square for the demo).
+' It deliberately draws a SQUARE switch, which makes the point that a callback owns the whole
+' look -- the pill and the knob are the built-in painter's choice, not the control's.
+'
+' (This comment used to add that a callback also "gives up the supersampling pass the built-in
+' painter runs". That has not been true since CBufferPaint took over rendering: the
+' supersampled tile is gone, geometry goes through GDI+, and a callback gets exactly the same
+' antialiased primitives the built-in painter does. Nothing is given up by setting one.)
 '
 ' The control has already filled the client with BackColor, so only the switch itself needs
 ' painting here.
@@ -282,9 +285,16 @@ sub CToggle_SquarePaintCallback( byval p as CTOGGLE_PAINTINFO ptr )
 
     ' The focus ring is the built-in painter's job too, so a callback that wants one draws
     ' it. The band is already reserved in the layout (rcVisual), so there is room.
+    '
+    ' PaintRoundOutline, NOT PaintBorderRect. PaintBorderRect delegates to PaintRectFactory,
+    ' which ALWAYS fills the rect with _backcolor before stroking it -- so used here it
+    ' flooded rcVisual with the knob colour set two lines up and erased the whole switch,
+    ' leaving a solid block whenever this row had focus. PaintRoundOutline exists for exactly
+    ' this case: stroke over already-painted pixels without filling. Curvature 0 gives the
+    ' square ring this square switch wants.
     if p->isFocused then
         p->b->SetPenColor( theme.FocusAccent )
-        p->b->PaintBorderRect( @p->rcVisual, 1 )
+        p->b->PaintRoundOutline( @p->rcVisual, 0, 1 )
     end if
 
 end sub
