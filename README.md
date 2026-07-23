@@ -169,7 +169,8 @@ Disabled colours are per-state on purpose: a disabled ON toggle must still read 
 > `CToggle_Create` passed only `dwStyle` — so the control declared itself a *container*, the
 > dialog manager descended into it looking for tabstops, found no children, and skipped it. The
 > control's own comment said "there is no `WS_EX_CONTROLPARENT`", which was the intent and not
-> what the code did. Now passed explicitly as `0`, and asserted three ways in the self-test.
+> what the code did. Now passed explicitly as `0`, asserted three ways in the self-test, and
+> confirmed by an interactive pass.
 > Note this fix is **wrong** for `CListBox`/`CTextBox`/`CNumericUpDown`/`CScrollPanel`, which
 > genuinely need the flag; see `C:\dev\Learnings.md`.
 
