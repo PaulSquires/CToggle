@@ -1,4 +1,4 @@
-# CToggle
+# PsToggle
 
 An owner-drawn toggle switch for FreeBASIC Win32 applications: a rounded pill whose fill
 changes with state, and a circular knob that sits at the left end when the switch is OFF and
@@ -17,9 +17,9 @@ positioned by you. There is no animation: the knob is at one end or the other.
 
 ## What it looks like
 
-![The CToggle demo](CToggle.png)
+![The PsToggle demo](PsToggle.png)
 
-Eight rows: ON with the focus ring, OFF, custom green colours, disabled-but-still-ON, a square switch from a host painter, and the three justifications inside a deliberately wide cell. The pill and knob are drawn through `CBufferPaint`'s GDI+ primitives, which is why the shoulders and the knob rim are smooth at this size.
+Eight rows: ON with the focus ring, OFF, custom green colours, disabled-but-still-ON, a square switch from a host painter, and the three justifications inside a deliberately wide cell. The pill and knob are drawn through `PsBufferPaint`'s GDI+ primitives, which is why the shoulders and the knob rim are smooth at this size.
 
 ---
 
@@ -29,12 +29,12 @@ Eight rows: ON with the focus ring, OFF, custom green colours, disabled-but-stil
 
 | File | Purpose |
 |---|---|
-| `CToggle.bi` | Declarations — types, callbacks, constants, function prototypes |
-| `CToggle.inc` | Implementation |
-| `CBufferPaint.bi` | The flicker-free drawing surface the control paints through |
-| `CBufferPaint.inc` | Its implementation |
+| `PsToggle.bi` | Declarations — types, callbacks, constants, function prototypes |
+| `PsToggle.inc` | Implementation |
+| `PsBufferPaint.bi` | The flicker-free drawing surface the control paints through |
+| `PsBufferPaint.inc` | Its implementation |
 
-**AfxNova is required.** The control is built on `CWindow`, and `CBufferPaint` draws through
+**AfxNova is required.** The control is built on `CWindow`, and `PsBufferPaint` draws through
 `AfxNova\CGdiPlus.inc`. Sources include AfxNova relative to the workspace root
 (`#include once "AfxNova\CWindow.inc"`), so builds need the workspace root on the include
 path:
@@ -43,12 +43,12 @@ path:
 fbc64.exe -i "C:\dev" main.bas
 ```
 
-**Include order.** `CToggle.inc` pulls in its own `.bi`, which pulls in `CBufferPaint.bi`. The
+**Include order.** `PsToggle.inc` pulls in its own `.bi`, which pulls in `PsBufferPaint.bi`. The
 two implementation files are included in this order:
 
 ```freebasic
-#include once "CBufferPaint.inc"
-#include once "CToggle.inc"
+#include once "PsBufferPaint.inc"
+#include once "PsToggle.inc"
 ```
 
 **GDI+ must be running before the first repaint and must outlive the last one.** The control
@@ -61,7 +61,7 @@ AfxGdipShutdown( gdipToken )
 ```
 
 `AfxGdipShutdown` must come after every window is destroyed, because each repaint builds and
-tears down a `CBufferPaint`.
+tears down a `PsBufferPaint`.
 
 **Never name an identifier `ok`.** GDI+ defines `Ok = 0` as a `Status` enum value in namespace
 `AfxNova`, and hosts customarily say `using AfxNova`. An existing variable, parameter or
@@ -96,18 +96,18 @@ does nothing, which is indistinguishable from the tabstops being broken.
 
 ```freebasic
 ' Create it. The control is created zero-sized and hidden.
-dim as HWND hToggle = CToggle_Create( hWndParent, IDC_MYFORM_TOGGLE )
+dim as HWND hToggle = PsToggle_Create( hWndParent, IDC_MYFORM_TOGGLE )
 
 ' Be told when the user flips it.
-CToggle_SetCheckChangedCallback( hToggle, @MyToggle_CheckChanged )
+PsToggle_SetCheckChangedCallback( hToggle, @MyToggle_CheckChanged )
 
 ' Set the initial state. This is silent — the callback above does not fire.
-CToggle_SetChecked( hToggle, true )
+PsToggle_SetChecked( hToggle, true )
 
 ' Ask how big it wants to be, then place it. GetIdealSize is valid immediately,
 ' before the control has ever been sized.
 dim as long iw, ih
-CToggle_GetIdealSize( hToggle, iw, ih )
+PsToggle_GetIdealSize( hToggle, iw, ih )
 SetWindowPos( hToggle, 0, x, y, iw, ih, SWP_NOZORDER )
 
 ShowWindow( hToggle, SW_SHOW )
@@ -118,7 +118,7 @@ And the callback:
 ```freebasic
 sub MyToggle_CheckChanged( byval hToggle as HWND, byval isChecked as boolean )
     ' Fired only for user action: a completed click, or Space/Enter.
-    ' The control's state is already updated, so CToggle_GetChecked() = isChecked.
+    ' The control's state is already updated, so PsToggle_GetChecked() = isChecked.
     gConfig.WordWrap = isChecked
 end sub
 ```
@@ -131,14 +131,14 @@ That is the whole minimum. Everything below is refinement.
 
 ### The handle is a real HWND
 
-`CToggle_Create` returns an ordinary window handle, and every `CToggle_*` function takes it. It
+`PsToggle_Create` returns an ordinary window handle, and every `PsToggle_*` function takes it. It
 is not an opaque type, so you can treat the control as the window it is — `SetWindowPos` to
 place and size it, `ShowWindow` to show it, `GetDlgItem` to find it by the `CtrlID` you passed
 at creation.
 
 ### It is created zero-sized and hidden
 
-`CToggle_Create` gives the control the styles `WS_CHILD`, `WS_TABSTOP`, `WS_CLIPSIBLINGS` and
+`PsToggle_Create` gives the control the styles `WS_CHILD`, `WS_TABSTOP`, `WS_CLIPSIBLINGS` and
 `WS_CLIPCHILDREN`, and no extended style at all. `WS_VISIBLE` is deliberately absent, so a
 newly created control shows nothing until you size it and call `ShowWindow`. That lets you
 build and configure a control before it is ever seen.
@@ -192,7 +192,7 @@ band is reserved whether or not the control currently has focus. This is why the
 jump sideways when you Tab onto it — and it is why changing either focus-ring value changes the
 control's ideal size.
 
-`CToggle_GetIdealSize` returns those full visual bounds, ring band included. Size the control
+`PsToggle_GetIdealSize` returns those full visual bounds, ring band included. Size the control
 with it and the ring is never clipped.
 
 ### Pixels, and who scales them
@@ -214,9 +214,9 @@ hairline should stay a hairline at any DPI.
 
 ### Programmatic changes are silent
 
-`CToggle_SetChecked` never fires the change callback. The callback reports **user** action — a
+`PsToggle_SetChecked` never fires the change callback. The callback reports **user** action — a
 completed click, or Space/Enter — and nothing else. This follows Win32's own `BM_SETCHECK` /
-`BN_CLICKED` split, and it means you can safely call `CToggle_SetChecked` from inside your own
+`BN_CLICKED` split, and it means you can safely call `PsToggle_SetChecked` from inside your own
 change handler without recursing.
 
 ### How a click is decided
@@ -241,7 +241,7 @@ the control ever saw it.
 
 ### Enabling and disabling is real, not cosmetic
 
-`CToggle_SetEnabled` calls `EnableWindow`. A disabled window receives no mouse input at all and
+`PsToggle_SetEnabled` calls `EnableWindow`. A disabled window receives no mouse input at all and
 the dialog manager's Tab skips it, so there is no way for a click or a keystroke to get past a
 cosmetic check. If you call `EnableWindow` on the control directly, the control notices and
 greys itself, so the two routes cannot disagree.
@@ -292,18 +292,18 @@ Firm properties of the control, not settings:
 
 | Function | Description |
 |---|---|
-| `CToggle_Create( hWndParent, CtrlID ) as HWND` | Creates the control as a child of `hWndParent` and returns its window handle. `CtrlID` becomes the window's `GWLP_ID`, so `GetDlgItem` finds it. Created zero-sized and hidden — size it with `CToggle_GetIdealSize`, place it with `SetWindowPos`, then `ShowWindow`. |
+| `PsToggle_Create( hWndParent, CtrlID ) as HWND` | Creates the control as a child of `hWndParent` and returns its window handle. `CtrlID` becomes the window's `GWLP_ID`, so `GetDlgItem` finds it. Created zero-sized and hidden — size it with `PsToggle_GetIdealSize`, place it with `SetWindowPos`, then `ShowWindow`. |
 
 ### State
 
 | Function | Description |
 |---|---|
-| `CToggle_GetChecked( hToggle ) as boolean` | TRUE when the switch is ON (knob at the right end). |
-| `CToggle_SetChecked( hToggle, isChecked )` | Sets the state and repaints. **Silent** — does not fire the change callback. No-op when the state already matches. |
-| `CToggle_GetEnabled( hToggle ) as boolean` | The control's enabled state. |
-| `CToggle_SetEnabled( hToggle, isEnabled )` | Enables or disables through `EnableWindow`, so input really stops. Disabling clears any hover and cancels a live press immediately rather than waiting for the next mouse move. Does not change the checked state. |
-| `CToggle_GetFocused( hToggle ) as boolean` | TRUE while the control has keyboard focus and is painting its focus ring. |
-| `CToggle_Refresh( hToggle )` | Marks the layout stale and requests a repaint with background erase. Rarely needed — every setter does this for you. |
+| `PsToggle_GetChecked( hToggle ) as boolean` | TRUE when the switch is ON (knob at the right end). |
+| `PsToggle_SetChecked( hToggle, isChecked )` | Sets the state and repaints. **Silent** — does not fire the change callback. No-op when the state already matches. |
+| `PsToggle_GetEnabled( hToggle ) as boolean` | The control's enabled state. |
+| `PsToggle_SetEnabled( hToggle, isEnabled )` | Enables or disables through `EnableWindow`, so input really stops. Disabling clears any hover and cancels a live press immediately rather than waiting for the next mouse move. Does not change the checked state. |
+| `PsToggle_GetFocused( hToggle ) as boolean` | TRUE while the control has keyboard focus and is painting its focus ring. |
+| `PsToggle_Refresh( hToggle )` | Marks the layout stale and requests a repaint with background erase. Rarely needed — every setter does this for you. |
 
 ### Layout
 
@@ -312,49 +312,49 @@ requests a repaint.
 
 | Function | Description |
 |---|---|
-| `CToggle_GetTrackSize( hToggle, byref nTrackWidth, byref nTrackHeight )` | The pill's current size in pixels. |
-| `CToggle_SetTrackSize( hToggle, nTrackWidth, nTrackHeight )` | Sets the pill's size. Each dimension is clamped to a minimum of 1. Changing the height also changes the knob's diameter. |
-| `CToggle_GetKnobInset( hToggle ) as long` | The gap between the track edge and the knob, on all four sides. |
-| `CToggle_SetKnobInset( hToggle, nKnobInset )` | Sets that gap; clamped to a minimum of 0. An inset larger than half the track height yields a knob of diameter 1 rather than an invalid shape. |
-| `CToggle_GetBorderThickness( hToggle ) as long` | The track's border thickness. |
-| `CToggle_SetBorderThickness( hToggle, nThickness )` | Sets it; clamped to a minimum of 0, where **0 means no border at all**. Repaints but never re-lays-out — the border is drawn inside the track, so it moves nothing. Do not DPI-scale this value. |
-| `CToggle_GetFocusRing( hToggle, byref nGap, byref nThickness )` | The gap from the track to the focus ring, and the ring's own thickness. |
-| `CToggle_SetFocusRing( hToggle, nGap, nThickness )` | Sets both; each clamped to a minimum of 0. **Both change the ideal size**, because the ring's band is reserved whether or not the control has focus. Do not DPI-scale the thickness. |
-| `CToggle_GetJustify( hToggle ) as long` | The current horizontal placement: `TOG_JUSTIFY_LEFT`, `TOG_JUSTIFY_CENTER` (the default) or `TOG_JUSTIFY_RIGHT`. |
-| `CToggle_SetJustify( hToggle, nJustify )` | Places the pill horizontally when the control is wider than the pill needs. Values outside the three constants are ignored. The pill is **always** vertically centred; there is no vertical justification. |
-| `CToggle_GetIdealSize( hToggle, byref nWidth, byref nHeight )` | The full visual bounds — `(trackW + 2×ringPad) × (trackH + 2×ringPad)`, where `ringPad = focusGap + focusThickness`. Computed from the scalars rather than from the layout, so it is **valid before the control has ever been sized**. |
-| `CToggle_GetTrackRect( hToggle, byref rc ) as boolean` | The pill's rectangle in client coordinates. |
-| `CToggle_GetKnobRect( hToggle, byref rc ) as boolean` | The knob's rectangle, already positioned for the current state. |
-| `CToggle_GetVisualRect( hToggle, byref rc ) as boolean` | The track inflated by the focus-ring band. |
+| `PsToggle_GetTrackSize( hToggle, byref nTrackWidth, byref nTrackHeight )` | The pill's current size in pixels. |
+| `PsToggle_SetTrackSize( hToggle, nTrackWidth, nTrackHeight )` | Sets the pill's size. Each dimension is clamped to a minimum of 1. Changing the height also changes the knob's diameter. |
+| `PsToggle_GetKnobInset( hToggle ) as long` | The gap between the track edge and the knob, on all four sides. |
+| `PsToggle_SetKnobInset( hToggle, nKnobInset )` | Sets that gap; clamped to a minimum of 0. An inset larger than half the track height yields a knob of diameter 1 rather than an invalid shape. |
+| `PsToggle_GetBorderThickness( hToggle ) as long` | The track's border thickness. |
+| `PsToggle_SetBorderThickness( hToggle, nThickness )` | Sets it; clamped to a minimum of 0, where **0 means no border at all**. Repaints but never re-lays-out — the border is drawn inside the track, so it moves nothing. Do not DPI-scale this value. |
+| `PsToggle_GetFocusRing( hToggle, byref nGap, byref nThickness )` | The gap from the track to the focus ring, and the ring's own thickness. |
+| `PsToggle_SetFocusRing( hToggle, nGap, nThickness )` | Sets both; each clamped to a minimum of 0. **Both change the ideal size**, because the ring's band is reserved whether or not the control has focus. Do not DPI-scale the thickness. |
+| `PsToggle_GetJustify( hToggle ) as long` | The current horizontal placement: `TOG_JUSTIFY_LEFT`, `TOG_JUSTIFY_CENTER` (the default) or `TOG_JUSTIFY_RIGHT`. |
+| `PsToggle_SetJustify( hToggle, nJustify )` | Places the pill horizontally when the control is wider than the pill needs. Values outside the three constants are ignored. The pill is **always** vertically centred; there is no vertical justification. |
+| `PsToggle_GetIdealSize( hToggle, byref nWidth, byref nHeight )` | The full visual bounds — `(trackW + 2×ringPad) × (trackH + 2×ringPad)`, where `ringPad = focusGap + focusThickness`. Computed from the scalars rather than from the layout, so it is **valid before the control has ever been sized**. |
+| `PsToggle_GetTrackRect( hToggle, byref rc ) as boolean` | The pill's rectangle in client coordinates. |
+| `PsToggle_GetKnobRect( hToggle, byref rc ) as boolean` | The knob's rectangle, already positioned for the current state. |
+| `PsToggle_GetVisualRect( hToggle, byref rc ) as boolean` | The track inflated by the focus-ring band. |
 
 The three rect queries force any pending layout first, so their results are always current. Each
 returns FALSE — leaving `rc` empty — when the control has no client area yet, which is the case
-between `CToggle_Create` and the first `SetWindowPos`.
+between `PsToggle_Create` and the first `SetWindowPos`.
 
 ### Appearance
 
 | Function | Description |
 |---|---|
-| `CToggle_GetColors( hToggle, pColors as CTOGGLE_COLORS ptr )` | Fills your struct with the control's current colours. |
-| `CToggle_SetColors( hToggle, pColors as CTOGGLE_COLORS ptr )` | Copies the whole struct in and repaints with background erase. |
+| `PsToggle_GetColors( hToggle, pColors as PSTOGGLE_COLORS ptr )` | Fills your struct with the control's current colours. |
+| `PsToggle_SetColors( hToggle, pColors as PSTOGGLE_COLORS ptr )` | Copies the whole struct in and repaints with background erase. |
 
 To change one colour, read-modify-write:
 
 ```freebasic
-dim as CTOGGLE_COLORS clrs
-CToggle_GetColors( hToggle, @clrs )
+dim as PSTOGGLE_COLORS clrs
+PsToggle_GetColors( hToggle, @clrs )
 clrs.TrackColorOn       = BGR( 62,140, 90)
 clrs.TrackBorderColorOn = BGR( 62,140, 90)
-CToggle_SetColors( hToggle, @clrs )
+PsToggle_SetColors( hToggle, @clrs )
 ```
 
 ### Callback registration
 
 | Function | Description |
 |---|---|
-| `CToggle_SetPaintCallback( hToggle, usersub )` | Installs a renderer that draws the whole control **instead of** the built-in painter. Repaints. |
-| `CToggle_SetMessageCallback( hToggle, userfunc )` | Installs an observer for mouse, focus and key messages. |
-| `CToggle_SetCheckChangedCallback( hToggle, usersub )` | Installs the handler told when the **user** flips the switch. |
+| `PsToggle_SetPaintCallback( hToggle, usersub )` | Installs a renderer that draws the whole control **instead of** the built-in painter. Repaints. |
+| `PsToggle_SetMessageCallback( hToggle, userfunc )` | Installs an observer for mouse, focus and key messages. |
+| `PsToggle_SetCheckChangedCallback( hToggle, usersub )` | Installs the handler told when the **user** flips the switch. |
 
 All three are optional and independent.
 
@@ -362,10 +362,10 @@ All three are optional and independent.
 
 ## Colors
 
-The colour surface is one flat struct, `CTOGGLE_COLORS`, with twenty `COLORREF` fields: three
+The colour surface is one flat struct, `PSTOGGLE_COLORS`, with twenty `COLORREF` fields: three
 drawn parts (track fill, track border, knob) × two states (ON / OFF) × three moods (idle, hot,
 disabled), plus the control's own background and the focus ring. Every field ships with a usable
-dark-theme default, so a control you never call `CToggle_SetColors` on still looks right.
+dark-theme default, so a control you never call `PsToggle_SetColors` on still looks right.
 
 | Field | Paints |
 |---|---|
@@ -423,7 +423,7 @@ the fill.
 | Knob | A filled ellipse, no rim. |
 | Focus ring | A rounded **outline** over `rcVisual`, drawn only while the control has focus and the ring thickness is above 0. Never a fill — it is drawn over the pill, and a filled shape there would erase it. |
 
-All of it goes through `CBufferPaint`, which renders geometry with GDI+, so the pill's shoulders
+All of it goes through `PsBufferPaint`, which renders geometry with GDI+, so the pill's shoulders
 and the knob's rim are antialiased. A paint callback gets that same buffer and inherits the same
 antialiased primitives.
 
@@ -438,15 +438,15 @@ type TOG_CheckChangedCallbackSub as sub( byval hToggle as HWND, byval isChecked 
 ```
 
 The user flipped the switch — a completed click, or Space/Enter. Fires **after** the control's
-state is updated, so `CToggle_GetChecked( hToggle )` already equals `isChecked`.
+state is updated, so `PsToggle_GetChecked( hToggle )` already equals `isChecked`.
 
-It does not fire for `CToggle_SetChecked`, which is what makes it safe to call that setter from
+It does not fire for `PsToggle_SetChecked`, which is what makes it safe to call that setter from
 inside this handler.
 
 ### Paint
 
 ```freebasic
-type TOG_PaintCallbackSub as sub( byval p as CTOGGLE_PAINTINFO ptr )
+type TOG_PaintCallbackSub as sub( byval p as PSTOGGLE_PAINTINFO ptr )
 ```
 
 Draws the whole control **instead of** the built-in painter. Paint through `p->b`, the control's
@@ -455,12 +455,12 @@ double buffer for this repaint — do not touch the screen DC.
 The control has already filled the client with `BackColor` before calling you, so a callback
 that only wants to add something on top does not have to repaint the background.
 
-`CTOGGLE_PAINTINFO` carries everything you need:
+`PSTOGGLE_PAINTINFO` carries everything you need:
 
 | Field | Meaning |
 |---|---|
 | `hToggle` | The control, so the callback can query it |
-| `b` | The control's `CBufferPaint` for this repaint (borrowed, not owned) |
+| `b` | The control's `PsBufferPaint` for this repaint (borrowed, not owned) |
 | `rcClient` | The whole client area |
 | `rcTrack` | The pill |
 | `rcKnob` | The circle, already at the end the current state calls for |
@@ -483,13 +483,13 @@ That is deliberate: the press should stop *looking* armed the moment the cursor 
 ### Message
 
 ```freebasic
-type TOG_MessageCallbackFunc as function( byval m as CTOGGLE_MESSAGEINFO ptr ) as boolean
+type TOG_MessageCallbackFunc as function( byval m as PSTOGGLE_MESSAGEINFO ptr ) as boolean
 ```
 
 Observes messages as they arrive. Return TRUE to suppress the control's own handling of that
 message, FALSE to let it proceed.
 
-`CTOGGLE_MESSAGEINFO` carries `hToggle`, `uMsg`, `wParam` and `lParam`.
+`PSTOGGLE_MESSAGEINFO` carries `hToggle`, `uMsg`, `wParam` and `lParam`.
 
 Mouse messages, focus changes (`WM_SETFOCUS`, `WM_KILLFOCUS`) and `WM_KEYDOWN` are all reported
 here.
@@ -518,9 +518,9 @@ end enum
 
 | Constant | Value | Meaning |
 |---|---:|---|
-| `CTOGGLE_DEFAULT_TRACKW` | 40 | Default track width, DPI-scaled at create |
-| `CTOGGLE_DEFAULT_TRACKH` | 20 | Default track height, DPI-scaled at create |
-| `CTOGGLE_DEFAULT_KNOBINSET` | 2 | Default knob inset, DPI-scaled at create |
-| `CTOGGLE_DEFAULT_BORDERTHICK` | 1 | Default border thickness, never DPI-scaled |
-| `CTOGGLE_DEFAULT_FOCUSGAP` | 3 | Default focus-ring gap, DPI-scaled at create |
-| `CTOGGLE_DEFAULT_FOCUSTHICK` | 1 | Default focus-ring thickness, never DPI-scaled |
+| `PSTOGGLE_DEFAULT_TRACKW` | 40 | Default track width, DPI-scaled at create |
+| `PSTOGGLE_DEFAULT_TRACKH` | 20 | Default track height, DPI-scaled at create |
+| `PSTOGGLE_DEFAULT_KNOBINSET` | 2 | Default knob inset, DPI-scaled at create |
+| `PSTOGGLE_DEFAULT_BORDERTHICK` | 1 | Default border thickness, never DPI-scaled |
+| `PSTOGGLE_DEFAULT_FOCUSGAP` | 3 | Default focus-ring gap, DPI-scaled at create |
+| `PSTOGGLE_DEFAULT_FOCUSTHICK` | 1 | Default focus-ring thickness, never DPI-scaled |

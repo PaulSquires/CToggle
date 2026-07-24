@@ -1,14 +1,14 @@
 ''
-''  CToggle.inc  --  owner-drawn toggle switch (pill + knob)
+''  PsToggle.inc  --  owner-drawn toggle switch (pill + knob)
 ''
 
-#include once "CToggle.bi"
+#include once "PsToggle.bi"
 
 
-function GetTogglePointer( byval hToggle as HWND ) as CTOGGLE ptr
+function GetTogglePointer( byval hToggle as HWND ) as PSTOGGLE ptr
     dim pWindow as CWindow ptr = AfxCWindowPtr(hToggle)
     if pWindow = 0 then return 0
-    return cast( CTOGGLE ptr, pWindow->UserData(0) )
+    return cast( PSTOGGLE ptr, pWindow->UserData(0) )
 end function
 
 
@@ -17,8 +17,8 @@ end function
 ' Callers decide whether to honor that answer -- WM_LBUTTONUP and the focus messages
 ' deliberately do not.
 ' ========================================================================================
-private function CToggle_CallMessage( _
-            byval pTog   as CTOGGLE ptr, _
+private function PsToggle_CallMessage( _
+            byval pTog   as PSTOGGLE ptr, _
             byval hwnd   as HWND, _
             byval uMsg   as UINT, _
             byval wParam as WPARAM, _
@@ -28,7 +28,7 @@ private function CToggle_CallMessage( _
     if pTog = 0 then return false
     if pTog->MessageCallback = 0 then return false
 
-    dim as CTOGGLE_MESSAGEINFO m
+    dim as PSTOGGLE_MESSAGEINFO m
     m.hToggle = hwnd
     m.uMsg    = uMsg
     m.wParam  = wParam
@@ -43,7 +43,7 @@ end function
 ' This used to supersample: the whole visual was rendered into a 4x offscreen 32bpp DIB and
 ' averaged back down with a HALFTONE StretchBlt, because plain GDI has no antialiasing and
 ' RoundRect's shoulders and Ellipse's rim came out visibly stair-stepped on a ~40x20 switch.
-' CBufferPaint draws through GDI+ now, so the curves are antialiased directly and the
+' PsBufferPaint draws through GDI+ now, so the curves are antialiased directly and the
 ' whole tile -- roughly 145 lines, an offscreen DC, a DIB section, and the two traps below
 ' -- is gone.
 '
@@ -58,17 +58,17 @@ end function
 '
 '   2. GDI PENS ARE CENTRED ON THE PATH, so a border of width W straddled the track edge
 '      with half of it outside, and the RoundRect had to be deflated by W. GDI+ pens are
-'      centred too -- but CBufferPaint now owns that correction for every control, so it
+'      centred too -- but PsBufferPaint now owns that correction for every control, so it
 '      is applied once there instead of hand-rolled here.
 '
 ' What is left is three primitive calls. Nothing in this routine touches a GDI object or a
-' device context, which is what puts CToggle back on the family contract: the control owns
-' geometry and state, CBufferPaint owns rendering.
+' device context, which is what puts PsToggle back on the family contract: the control owns
+' geometry and state, PsBufferPaint owns rendering.
 ' ========================================================================================
-private sub CToggle_RenderDefault( _
-            byval pTog as CTOGGLE ptr, _
-            byval b    as CBufferPaint ptr, _
-            byval p    as CTOGGLE_PAINTINFO ptr _
+private sub PsToggle_RenderDefault( _
+            byval pTog as PSTOGGLE ptr, _
+            byval b    as PsBufferPaint ptr, _
+            byval p    as PSTOGGLE_PAINTINFO ptr _
             )
 
     if (pTog = 0) orelse (b = 0) orelse (p = 0) then exit sub
@@ -79,7 +79,7 @@ private sub CToggle_RenderDefault( _
 
     ' ---- which three colors ------------------------------------------------------------
     ' Precedence: disabled > hot/pressed > idle. A live press renders as hot; there are no
-    ' pressed colors (see CTOGGLE_COLORS).
+    ' pressed colors (see PSTOGGLE_COLORS).
     dim as COLORREF clrTrack, clrBorder, clrKnob
     with pTog->colors
         if p->isEnabled = false then
@@ -118,7 +118,7 @@ private sub CToggle_RenderDefault( _
     ' ---- the track ---------------------------------------------------------------------
     ' A corner ellipse as wide and tall as the rect's HEIGHT makes both ends exact
     ' semicircles -- that, and only that, is what turns a rounded rectangle into a pill.
-    ' Curvature is a DIAMETER here (CBufferPaint halves it to a radius internally), so
+    ' Curvature is a DIAMETER here (PsBufferPaint halves it to a radius internally), so
     ' the track height goes in unmodified.
     dim as long ell = p->rcTrack.bottom - p->rcTrack.top
     dim as RECT rcTrack = p->rcTrack
@@ -151,19 +151,19 @@ end sub
 ' ========================================================================================
 ' Process WM_PAINT.
 ' ========================================================================================
-private function CToggle_OnPaint( byval hwnd as HWND ) as LRESULT
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hwnd)
+private function PsToggle_OnPaint( byval hwnd as HWND ) as LRESULT
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hwnd)
     if pTog = null then return 0
 
     ' Consume any pending layout before painting -- this is what makes layout lazy.
     if pTog->bLayoutDirty then pTog->LayoutToggle()
 
-    dim as CBufferPaint b
+    dim as PsBufferPaint b
     b.BeginDoubleBuffer(hwnd)
     b.SetBackColor( pTog->colors.BackColor )
     b.PaintClientRect()
 
-    dim p as CTOGGLE_PAINTINFO
+    dim p as PSTOGGLE_PAINTINFO
     p.hToggle  = hwnd
     p.b        = @b
     GetClientRect( hwnd, @p.rcClient )
@@ -181,7 +181,7 @@ private function CToggle_OnPaint( byval hwnd as HWND ) as LRESULT
     if pTog->PaintCallback then
         pTog->PaintCallback( @p )
     else
-        CToggle_RenderDefault( pTog, @b, @p )
+        PsToggle_RenderDefault( pTog, @b, @p )
     end if
 
     b.EndDoubleBuffer()
@@ -197,7 +197,7 @@ end function
 ' which is exactly right: the cursor left, so the press must stop looking armed. The gesture
 ' itself survives -- only a release or a capture loss ends it.
 ' ========================================================================================
-private sub CToggle_ClearHot( byval pTog as CTOGGLE ptr, byval hwnd as HWND )
+private sub PsToggle_ClearHot( byval pTog as PSTOGGLE ptr, byval hwnd as HWND )
     if pTog = 0 then exit sub
     if pTog->hotTimerOn then
         KillTimer( hwnd, IDT_CTOGGLE_HOTTRACK )
@@ -219,9 +219,9 @@ end sub
 ' at the old end.
 '
 ' The callback goes out LAST, after the state is consistent, so a host that queries
-' CToggle_GetChecked() from inside it sees the new value.
+' PsToggle_GetChecked() from inside it sees the new value.
 ' ========================================================================================
-private sub CToggle_ApplyUserToggle( byval pTog as CTOGGLE ptr, byval hwnd as HWND )
+private sub PsToggle_ApplyUserToggle( byval pTog as PSTOGGLE ptr, byval hwnd as HWND )
     if pTog = 0 then exit sub
     pTog->isChecked = not pTog->isChecked
     pTog->bLayoutDirty = true
@@ -231,7 +231,7 @@ end sub
 
 
 ' ========================================================================================
-' CToggle Window procedure
+' PsToggle Window procedure
 '
 ' This control has no child windows, so there is nothing to subclass: every message is
 ' handled here and anything unhandled goes to DefWindowProc.
@@ -249,30 +249,30 @@ end sub
 '   - WM_CAPTURECHANGED cancels the press (anything can steal capture at any time);
 '   - WM_DESTROY releases it if we still hold it.
 '
-' CS_DBLCLKS IS DELIBERATELY *NOT* SET -- the opposite call from CSelectBar and CSplitter,
+' CS_DBLCLKS IS DELIBERATELY *NOT* SET -- the opposite call from PsSelectBar and PsSplitter,
 ' and the reason matters. With CS_DBLCLKS the second of two rapid clicks arrives as
 ' WM_LBUTTONDBLCLK INSTEAD OF a second WM_LBUTTONDOWN. For a control whose entire job is to
 ' flip on every click, that would silently swallow every second rapid click and the toggle
-' would appear to ignore half the user's input. CIconPanel omits it for exactly this reason
+' would appear to ignore half the user's input. PsIconPanel omits it for exactly this reason
 ' on its toggle items; here the control IS a toggle, so the reasoning is stronger still.
 ' Without the class style, rapid clicking produces a plain down/up pair every time.
 '
 ' FOCUS: this is the first focusable control in the family (WS_TABSTOP, Space/Enter). See
 ' the WM_GETDLGCODE handler for the one subtlety that needed care.
 ' ========================================================================================
-function CToggle_WndProc( _
+function PsToggle_WndProc( _
             byval hwnd   as HWND, _
             byval uMsg   as UINT, _
             byval wParam as WPARAM, _
             byval lParam as LPARAM _
             ) as LRESULT
 
-    dim as CTOGGLE ptr pTog = GetTogglePointer( hwnd )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer( hwnd )
 
     select case uMsg
 
     case WM_PAINT
-        return CToggle_OnPaint( hwnd )
+        return PsToggle_OnPaint( hwnd )
 
     case WM_ERASEBKGND
         ' Never erase: WM_PAINT fills the whole client through the double buffer, so a
@@ -293,7 +293,7 @@ function CToggle_WndProc( _
                 dim as RECT rcClient
                 GetClientRect( hwnd, @rcClient )
                 if isMouseOverRECT( hwnd, rcClient ) = false then
-                    CToggle_ClearHot( pTog, hwnd )
+                    PsToggle_ClearHot( pTog, hwnd )
                 end if
             end if
             return 0
@@ -320,7 +320,7 @@ function CToggle_WndProc( _
             ' Safety net: WM_MOUSELEAVE is not guaranteed to arrive when the mouse exits
             ' quickly (or onto another control), which would strand the control painted hot.
             if pTog->hotTimerOn = false then
-                SetTimer( hwnd, IDT_CTOGGLE_HOTTRACK, CTOGGLE_HOTTRACK_MS, NULL )
+                SetTimer( hwnd, IDT_CTOGGLE_HOTTRACK, PSTOGGLE_HOTTRACK_MS, NULL )
                 pTog->hotTimerOn = true
             end if
         end if
@@ -330,19 +330,19 @@ function CToggle_WndProc( _
             InvalidateRect( hwnd, NULL, FALSE )
         end if
 
-        if CToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam ) then return 0
+        if PsToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam ) then return 0
 
     case WM_MOUSELEAVE
         if pTog then
             ' Fast path for clearing the hot state (the WM_TIMER poll is the fallback for
             ' when this message never arrives).
-            if pTog->isPressed = false then CToggle_ClearHot( pTog, hwnd )
-            if CToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam ) then return 0
+            if pTog->isPressed = false then PsToggle_ClearHot( pTog, hwnd )
+            if PsToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam ) then return 0
         end if
 
     case WM_LBUTTONDOWN
         if pTog = 0 then return 0
-        ' A disabled window does not receive mouse input at all (CToggle_SetEnabled calls
+        ' A disabled window does not receive mouse input at all (PsToggle_SetEnabled calls
         ' EnableWindow), so this is belt-and-braces against a host that disabled us by some
         ' other route.
         if pTog->isEnabled = false then return 0
@@ -354,7 +354,7 @@ function CToggle_WndProc( _
 
         ' Suppressing the press is allowed: no capture has been taken yet, so there is no
         ' bookkeeping to strand.
-        if CToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam ) then return 0
+        if PsToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam ) then return 0
 
         SetCapture( hwnd )
         pTog->isPressed = true
@@ -382,13 +382,13 @@ function CToggle_WndProc( _
         InvalidateRect( hwnd, NULL, FALSE )
 
         ' The result is deliberately IGNORED here (see TOG_MessageCallbackFunc).
-        CToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam )
+        PsToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam )
 
         ' Only a matched press+release with the cursor still inside flips the state. Press,
         ' slide off, release = nothing happened, which is the whole reason for capture.
         ' isEnabled is re-read because a callback may have disabled us mid-gesture.
         dim as boolean bFlip = bWasPressed andalso bInside andalso pTog->isEnabled
-        if bFlip then CToggle_ApplyUserToggle( pTog, hwnd )
+        if bFlip then PsToggle_ApplyUserToggle( pTog, hwnd )
         return 0
 
     case WM_CAPTURECHANGED
@@ -401,10 +401,10 @@ function CToggle_WndProc( _
         end if
 
     case WM_RBUTTONDOWN, WM_RBUTTONUP
-        ' Reported, never acted on: a context menu is the host's business (CPopupMenu). No
+        ' Reported, never acted on: a context menu is the host's business (PsPopupMenu). No
         ' capture is taken for the right button, so an up can arrive without a down.
         if pTog then
-            if CToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam ) then return 0
+            if PsToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam ) then return 0
         end if
 
     case WM_SETFOCUS, WM_KILLFOCUS
@@ -417,7 +417,7 @@ function CToggle_WndProc( _
                 pTog->isFocused = bFocused
                 InvalidateRect( hwnd, NULL, FALSE )
             end if
-            CToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam )
+            PsToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam )
             return 0
         end if
 
@@ -444,12 +444,12 @@ function CToggle_WndProc( _
     case WM_KEYDOWN
         if pTog = 0 then exit select
         if pTog->isEnabled = false then return 0
-        if CToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam ) then return 0
+        if PsToggle_CallMessage( pTog, hwnd, uMsg, wParam, lParam ) then return 0
         select case wParam
         case VK_SPACE, VK_RETURN
             ' Same path a completed click takes, so keyboard and mouse cannot drift apart:
             ' both are user action, both notify.
-            CToggle_ApplyUserToggle( pTog, hwnd )
+            PsToggle_ApplyUserToggle( pTog, hwnd )
             return 0
         end select
         ' Arrow keys are deliberately NOT handled. Left=off / Right=on is a common toggle
@@ -458,7 +458,7 @@ function CToggle_WndProc( _
 
     case WM_ENABLE
         ' Keeps our own flag true to the window's real state, so a host that reaches for
-        ' EnableWindow directly instead of CToggle_SetEnabled still gets the greyed
+        ' EnableWindow directly instead of PsToggle_SetEnabled still gets the greyed
         ' rendering rather than a control that looks live but eats input.
         if pTog then
             pTog->isEnabled = (wParam <> 0)
@@ -500,9 +500,9 @@ end function
 
 
 ' ========================================================================================
-' CToggle_Create
+' PsToggle_Create
 ' ========================================================================================
-function CToggle_Create( byval hWndParent as HWND, byval CtrlID as long ) as HWND
+function PsToggle_Create( byval hWndParent as HWND, byval CtrlID as long ) as HWND
 
     dim pWindow as CWindow ptr = New CWindow
 
@@ -514,17 +514,17 @@ function CToggle_Create( byval hWndParent as HWND, byval CtrlID as long ) as HWN
     ' CWindow.Create defaults its dwExStyle parameter to WS_EX_CONTROLPARENT OR
     ' WS_EX_WINDOWEDGE, so passing only dwStyle -- as this call did -- silently declared the
     ' control a CONTAINER. The dialog manager then descended into it looking for tabstops,
-    ' found no children, and SKIPPED it: Tab never landed on a CToggle, in this repo's demo
+    ' found no children, and SKIPPED it: Tab never landed on a PsToggle, in this repo's demo
     ' or in any host. The comment above was written as an intention and read for months as a
     ' statement of fact; nothing at the call site showed an extended style being chosen at all.
     '
-    ' DO NOT COPY THIS INTO A WRAP-A-REAL-CHILD CONTROL. CListBox, CTextBox, CNumericUpDown
-    ' and CScrollPanel all NEED WS_EX_CONTROLPARENT, because their tabstop lives on an inner
+    ' DO NOT COPY THIS INTO A WRAP-A-REAL-CHILD CONTROL. PsListBox, PsTextBox, PsNumericUpDown
+    ' and PsScrollPanel all NEED WS_EX_CONTROLPARENT, because their tabstop lives on an inner
     ' child; passing 0 there would make them unreachable instead. The test is "does this
     ' window have children the dialog manager should find?", not "is this a control?".
     ' Full write-up in C:\dev\Learnings.md.
     dim as HWND hCtrl = _
-            pWindow->Create( hWndParent, "", @CToggle_WndProc, _
+            pWindow->Create( hWndParent, "", @PsToggle_WndProc, _
             0, 0, 0, 0, WS_CHILD or WS_TABSTOP or WS_CLIPSIBLINGS or WS_CLIPCHILDREN, _
             0 _
             )
@@ -532,7 +532,7 @@ function CToggle_Create( byval hWndParent as HWND, byval CtrlID as long ) as HWN
     ' NOTE: CS_DBLCLKS is deliberately NOT enabled here -- see the WndProc header. It would
     ' turn every second rapid click into a WM_LBUTTONDBLCLK and the toggle would drop it.
 
-    dim as CTOGGLE ptr pTog = new CTOGGLE
+    dim as PSTOGGLE ptr pTog = new PSTOGGLE
     pTog->hWin       = hCtrl
     pTog->idc_Toggle = CtrlID
 
@@ -541,11 +541,11 @@ function CToggle_Create( byval hWndParent as HWND, byval CtrlID as long ) as HWN
     ' ScaleY because they are subtracted from the track HEIGHT (they apply on both axes, and
     ' ScaleX and ScaleY agree in practice, but the height arithmetic is the one that has to
     ' stay consistent). nBorderThick and nFocusThick are NOT scaled at all -- a hairline
-    ' should stay a hairline, which is CMenuBar's nSeparatorThickness rule.
-    pTog->nTrackWidth  = pWindow->ScaleX( CTOGGLE_DEFAULT_TRACKW )
-    pTog->nTrackHeight = pWindow->ScaleY( CTOGGLE_DEFAULT_TRACKH )
-    pTog->nKnobInset   = pWindow->ScaleY( CTOGGLE_DEFAULT_KNOBINSET )
-    pTog->nFocusGap    = pWindow->ScaleY( CTOGGLE_DEFAULT_FOCUSGAP )
+    ' should stay a hairline, which is PsMenuBar's nSeparatorThickness rule.
+    pTog->nTrackWidth  = pWindow->ScaleX( PSTOGGLE_DEFAULT_TRACKW )
+    pTog->nTrackHeight = pWindow->ScaleY( PSTOGGLE_DEFAULT_TRACKH )
+    pTog->nKnobInset   = pWindow->ScaleY( PSTOGGLE_DEFAULT_KNOBINSET )
+    pTog->nFocusGap    = pWindow->ScaleY( PSTOGGLE_DEFAULT_FOCUSGAP )
 
     SetWindowLongPtr( hCtrl, GWLP_ID, CtrlID )
 
@@ -560,8 +560,8 @@ end function
 ' ========================================================================================
 ' State
 ' ========================================================================================
-function CToggle_GetChecked( byval hToggle as HWND ) as boolean
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+function PsToggle_GetChecked( byval hToggle as HWND ) as boolean
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then return false
     return pTog->isChecked
 end function
@@ -569,16 +569,16 @@ end function
 ' ========================================================================================
 ' SILENT: the change callback fires only for user interaction. See the header.
 ' ========================================================================================
-sub CToggle_SetChecked( byval hToggle as HWND, byval isChecked as boolean )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_SetChecked( byval hToggle as HWND, byval isChecked as boolean )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     if pTog->isChecked = isChecked then exit sub
     pTog->isChecked = isChecked
     pTog->Refresh()          ' the knob moved, so the layout is stale
 end sub
 
-function CToggle_GetEnabled( byval hToggle as HWND ) as boolean
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+function PsToggle_GetEnabled( byval hToggle as HWND ) as boolean
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then return false
     return pTog->isEnabled
 end function
@@ -591,8 +591,8 @@ end function
 ' a host that calls EnableWindow itself); the work is repeated here because Windows sends no
 ' WM_ENABLE when the state was already what we asked for.
 ' ========================================================================================
-sub CToggle_SetEnabled( byval hToggle as HWND, byval isEnabled as boolean )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_SetEnabled( byval hToggle as HWND, byval isEnabled as boolean )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     pTog->isEnabled = isEnabled
     if isEnabled then
@@ -605,14 +605,14 @@ sub CToggle_SetEnabled( byval hToggle as HWND, byval isEnabled as boolean )
     InvalidateRect( hToggle, NULL, FALSE )
 end sub
 
-function CToggle_GetFocused( byval hToggle as HWND ) as boolean
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+function PsToggle_GetFocused( byval hToggle as HWND ) as boolean
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then return false
     return pTog->isFocused
 end function
 
-sub CToggle_Refresh( byval hToggle as HWND )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_Refresh( byval hToggle as HWND )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     pTog->Refresh()
 end sub
@@ -621,17 +621,17 @@ end sub
 ' ========================================================================================
 ' Layout.  All setters take RAW PIXELS -- the caller DPI-scales.
 ' ========================================================================================
-sub CToggle_GetTrackSize( byval hToggle as HWND, byref nTrackWidth as long, byref nTrackHeight as long )
+sub PsToggle_GetTrackSize( byval hToggle as HWND, byref nTrackWidth as long, byref nTrackHeight as long )
     nTrackWidth  = 0
     nTrackHeight = 0
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     nTrackWidth  = pTog->nTrackWidth
     nTrackHeight = pTog->nTrackHeight
 end sub
 
-sub CToggle_SetTrackSize( byval hToggle as HWND, byval nTrackWidth as long, byval nTrackHeight as long )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_SetTrackSize( byval hToggle as HWND, byval nTrackWidth as long, byval nTrackHeight as long )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     if nTrackWidth  < 1 then nTrackWidth  = 1
     if nTrackHeight < 1 then nTrackHeight = 1
@@ -640,40 +640,40 @@ sub CToggle_SetTrackSize( byval hToggle as HWND, byval nTrackWidth as long, byva
     pTog->Refresh()
 end sub
 
-function CToggle_GetKnobInset( byval hToggle as HWND ) as long
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+function PsToggle_GetKnobInset( byval hToggle as HWND ) as long
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then return 0
     return pTog->nKnobInset
 end function
 
-sub CToggle_SetKnobInset( byval hToggle as HWND, byval nKnobInset as long )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_SetKnobInset( byval hToggle as HWND, byval nKnobInset as long )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     if nKnobInset < 0 then nKnobInset = 0
     pTog->nKnobInset = nKnobInset
     pTog->Refresh()
 end sub
 
-function CToggle_GetBorderThickness( byval hToggle as HWND ) as long
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+function PsToggle_GetBorderThickness( byval hToggle as HWND ) as long
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then return 0
     return pTog->nBorderThick
 end function
 
 ' Thickness only, no layout consequence: the border is drawn INSIDE the track, so changing
 ' it repaints but never moves anything. Zero means no border at all.
-sub CToggle_SetBorderThickness( byval hToggle as HWND, byval nThickness as long )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_SetBorderThickness( byval hToggle as HWND, byval nThickness as long )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     if nThickness < 0 then nThickness = 0
     pTog->nBorderThick = nThickness
     if pTog->hWin then InvalidateRect( pTog->hWin, NULL, FALSE )
 end sub
 
-sub CToggle_GetFocusRing( byval hToggle as HWND, byref nGap as long, byref nThickness as long )
+sub PsToggle_GetFocusRing( byval hToggle as HWND, byref nGap as long, byref nThickness as long )
     nGap       = 0
     nThickness = 0
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     nGap       = pTog->nFocusGap
     nThickness = pTog->nFocusThick
@@ -681,8 +681,8 @@ end sub
 
 ' BOTH are layout inputs, focused or not: the ring's band is reserved unconditionally so the
 ' pill does not jump when focus arrives, which means either value changes the ideal size.
-sub CToggle_SetFocusRing( byval hToggle as HWND, byval nGap as long, byval nThickness as long )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_SetFocusRing( byval hToggle as HWND, byval nGap as long, byval nThickness as long )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     if nGap < 0 then nGap = 0
     if nThickness < 0 then nThickness = 0
@@ -691,14 +691,14 @@ sub CToggle_SetFocusRing( byval hToggle as HWND, byval nGap as long, byval nThic
     pTog->Refresh()
 end sub
 
-function CToggle_GetJustify( byval hToggle as HWND ) as long
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+function PsToggle_GetJustify( byval hToggle as HWND ) as long
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then return TOG_JUSTIFY_CENTER
     return pTog->nJustify
 end function
 
-sub CToggle_SetJustify( byval hToggle as HWND, byval nJustify as long )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_SetJustify( byval hToggle as HWND, byval nJustify as long )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     select case nJustify
     case TOG_JUSTIFY_LEFT, TOG_JUSTIFY_CENTER, TOG_JUSTIFY_RIGHT
@@ -714,10 +714,10 @@ end sub
 ' the scalars and NOT from the layout, so it is valid before the control has ever been
 ' sized -- which is the whole point, since a host calls this to decide how big to make it.
 ' ========================================================================================
-sub CToggle_GetIdealSize( byval hToggle as HWND, byref nWidth as long, byref nHeight as long )
+sub PsToggle_GetIdealSize( byval hToggle as HWND, byref nWidth as long, byref nHeight as long )
     nWidth  = 0
     nHeight = 0
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     dim as long ringPad = pTog->RingPad()
     nWidth  = pTog->nTrackWidth  + (2 * ringPad)
@@ -728,9 +728,9 @@ end sub
 ' Rect queries. Each forces a pending layout, so results are always current. FALSE means the
 ' control has no geometry yet (created but never sized).
 ' ========================================================================================
-function CToggle_GetTrackRect( byval hToggle as HWND, byref rc as RECT ) as boolean
+function PsToggle_GetTrackRect( byval hToggle as HWND, byref rc as RECT ) as boolean
     SetRectEmpty( @rc )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then return false
     if pTog->bLayoutDirty then pTog->LayoutToggle()
     if pTog->bLayoutDirty then return false        ' still no client area
@@ -738,9 +738,9 @@ function CToggle_GetTrackRect( byval hToggle as HWND, byref rc as RECT ) as bool
     return true
 end function
 
-function CToggle_GetKnobRect( byval hToggle as HWND, byref rc as RECT ) as boolean
+function PsToggle_GetKnobRect( byval hToggle as HWND, byref rc as RECT ) as boolean
     SetRectEmpty( @rc )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then return false
     if pTog->bLayoutDirty then pTog->LayoutToggle()
     if pTog->bLayoutDirty then return false
@@ -748,9 +748,9 @@ function CToggle_GetKnobRect( byval hToggle as HWND, byref rc as RECT ) as boole
     return true
 end function
 
-function CToggle_GetVisualRect( byval hToggle as HWND, byref rc as RECT ) as boolean
+function PsToggle_GetVisualRect( byval hToggle as HWND, byref rc as RECT ) as boolean
     SetRectEmpty( @rc )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then return false
     if pTog->bLayoutDirty then pTog->LayoutToggle()
     if pTog->bLayoutDirty then return false
@@ -762,16 +762,16 @@ end function
 ' ========================================================================================
 ' Appearance
 ' ========================================================================================
-sub CToggle_GetColors( byval hToggle as HWND, byval pColors as CTOGGLE_COLORS ptr )
+sub PsToggle_GetColors( byval hToggle as HWND, byval pColors as PSTOGGLE_COLORS ptr )
     if pColors = 0 then exit sub
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     *pColors = pTog->colors
 end sub
 
-sub CToggle_SetColors( byval hToggle as HWND, byval pColors as CTOGGLE_COLORS ptr )
+sub PsToggle_SetColors( byval hToggle as HWND, byval pColors as PSTOGGLE_COLORS ptr )
     if pColors = 0 then exit sub
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     pTog->colors = *pColors
     if pTog->hWin then InvalidateRect( pTog->hWin, NULL, TRUE )
@@ -781,21 +781,21 @@ end sub
 ' ========================================================================================
 ' Callbacks
 ' ========================================================================================
-sub CToggle_SetPaintCallback( byval hToggle as HWND, byval usersub as TOG_PaintCallbackSub )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_SetPaintCallback( byval hToggle as HWND, byval usersub as TOG_PaintCallbackSub )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     pTog->PaintCallback = usersub
     if pTog->hWin then InvalidateRect( pTog->hWin, NULL, TRUE )
 end sub
 
-sub CToggle_SetMessageCallback( byval hToggle as HWND, byval userfunc as TOG_MessageCallbackFunc )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_SetMessageCallback( byval hToggle as HWND, byval userfunc as TOG_MessageCallbackFunc )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     pTog->MessageCallback = userfunc
 end sub
 
-sub CToggle_SetCheckChangedCallback( byval hToggle as HWND, byval usersub as TOG_CheckChangedCallbackSub )
-    dim as CTOGGLE ptr pTog = GetTogglePointer(hToggle)
+sub PsToggle_SetCheckChangedCallback( byval hToggle as HWND, byval usersub as TOG_CheckChangedCallbackSub )
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(hToggle)
     if pTog = 0 then exit sub
     pTog->CheckChangedCallback = usersub
 end sub

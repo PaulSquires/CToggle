@@ -1,32 +1,32 @@
 ''
-''  CToggle.bi  --  owner-drawn toggle switch (pill + knob)
+''  PsToggle.bi  --  owner-drawn toggle switch (pill + knob)
 ''
 
 #pragma once
 
-#include once "CBufferPaint.bi"
+#include once "PsBufferPaint.bi"
 
 ' Polling timer that guarantees hot-tracking is cleared when the mouse leaves the control.
 ' WM_MOUSELEAVE (TME_LEAVE) is not reliably delivered on fast exits, so a periodic cursor
 ' check acts as a safety net. Timer IDs are per-window, so every instance can share this id.
 #define IDT_CTOGGLE_HOTTRACK   &hCB70
-#define CTOGGLE_HOTTRACK_MS    100
+#define PSTOGGLE_HOTTRACK_MS    100
 
-' (CTOGGLE_SUPERSAMPLE is gone. The pill and knob used to be rendered at 4x into an
+' (PSTOGGLE_SUPERSAMPLE is gone. The pill and knob used to be rendered at 4x into an
 '  offscreen tile and scaled back down with a HALFTONE StretchBlt to fake antialiasing,
 '  because plain GDI RoundRect/Ellipse edges are visibly jagged at this size.
-'  CBufferPaint renders through GDI+ now and antialiases the curves directly, so the
+'  PsBufferPaint renders through GDI+ now and antialiases the curves directly, so the
 '  tile, the constant and the traps that came with them have all been deleted.)
 
 ' Defaults. The four SIZE values are DPI-scaled at Create; every setter afterwards takes
 ' raw pixels and the caller scales (the family rule). The two THICKNESS values are NOT
-' DPI-scaled, ever -- a hairline should stay a hairline (CMenuBar's nSeparatorThickness).
-#define CTOGGLE_DEFAULT_TRACKW      40
-#define CTOGGLE_DEFAULT_TRACKH      20
-#define CTOGGLE_DEFAULT_KNOBINSET    2
-#define CTOGGLE_DEFAULT_BORDERTHICK  1     ' not DPI-scaled
-#define CTOGGLE_DEFAULT_FOCUSGAP     3
-#define CTOGGLE_DEFAULT_FOCUSTHICK   1     ' not DPI-scaled
+' DPI-scaled, ever -- a hairline should stay a hairline (PsMenuBar's nSeparatorThickness).
+#define PSTOGGLE_DEFAULT_TRACKW      40
+#define PSTOGGLE_DEFAULT_TRACKH      20
+#define PSTOGGLE_DEFAULT_KNOBINSET    2
+#define PSTOGGLE_DEFAULT_BORDERTHICK  1     ' not DPI-scaled
+#define PSTOGGLE_DEFAULT_FOCUSGAP     3
+#define PSTOGGLE_DEFAULT_FOCUSTHICK   1     ' not DPI-scaled
 
 ' Where the pill sits horizontally when the control is wider than the pill needs. It is
 ' ALWAYS vertically centred -- there is no vertical justification, because a toggle in a
@@ -42,19 +42,19 @@ end enum
 '
 ' Three drawn parts (track fill, track border, knob) x two states (checked / unchecked) x
 ' three moods (idle / hot / disabled), plus the control's own background and the focus ring.
-' Flat COLORREF fields with defaults, exactly like CSELECTBAR_COLORS -- read-modify-write is
-' CToggle_GetColors, assign, CToggle_SetColors.
+' Flat COLORREF fields with defaults, exactly like PSSELECTBAR_COLORS -- read-modify-write is
+' PsToggle_GetColors, assign, PsToggle_SetColors.
 '
 ' THE ON PILL LOOKS BORDERLESS BY DEFAULT because TrackBorderColorOn* is defaulted EQUAL to
 ' the matching TrackColorOn*. The OFF pill is distinguished by an outline instead: its fill
 ' sits close to the background and TrackBorderColorOff is markedly lighter. That asymmetry
 ' is the look this control was drawn for; a host that wants a visible ON border just sets
-' the field. (Same trick CSelectBar uses defaulting BackColorHot to BackColor.)
+' the field. (Same trick PsSelectBar uses defaulting BackColorHot to BackColor.)
 '
-' THERE ARE NO PRESSED COLORS. A live press renders as hot, which is CSelectBar's rule and
+' THERE ARE NO PRESSED COLORS. A live press renders as hot, which is PsSelectBar's rule and
 ' reads correctly for a control whose whole job is to flip on release. isPressed is still
 ' handed to the paint callback, so a host that wants a distinct pressed look can draw one.
-type CTOGGLE_COLORS
+type PSTOGGLE_COLORS
     BackColor                   as COLORREF = BGR( 33, 37, 43)   ' the control's own background
     FocusRingColor              as COLORREF = BGR( 86,156,214)
     ' --- checked (ON) ---
@@ -83,9 +83,9 @@ end type
 ' Everything the painter needs. All three rects are precomputed by LayoutToggle -- never
 ' re-derive one from another, and in particular never derive the knob from the track by
 ' repeating the inset arithmetic, because SetKnobInset can change it underneath you.
-type CTOGGLE_PAINTINFO
+type PSTOGGLE_PAINTINFO
     hToggle    as HWND                 ' the control, so the callback can query it
-    b          as CBufferPaint ptr  ' the control's buffer for this repaint (no copy)
+    b          as PsBufferPaint ptr  ' the control's buffer for this repaint (no copy)
     ' --- Geometry, all precomputed by LayoutToggle ---
     rcClient   as RECT                 ' the whole client area
     rcTrack    as RECT                 ' the pill
@@ -101,7 +101,7 @@ type CTOGGLE_PAINTINFO
     isFocused  as boolean              ' draw a focus ring when true
 end type
 
-type CTOGGLE_MESSAGEINFO
+type PSTOGGLE_MESSAGEINFO
     hToggle    as HWND
     uMsg       as UINT
     wParam     as WPARAM
@@ -119,36 +119,36 @@ end type
 '
 ' The control has already filled the client with BackColor before calling you, so a callback
 ' that only wants to add something on top does not have to repaint the background.
-type TOG_PaintCallbackSub as sub( byval p as CTOGGLE_PAINTINFO ptr )
+type TOG_PaintCallbackSub as sub( byval p as PSTOGGLE_PAINTINFO ptr )
 
 ' Observe messages. Return TRUE if you handled it and want the control's default handling
 ' suppressed, FALSE to let it proceed.
 '
 ' Unlike its siblings this control hands over the FOCUS and KEYBOARD messages as well as the
-' mouse ones (WM_SETFOCUS, WM_KILLFOCUS, WM_KEYDOWN), because CToggle is the first focusable
+' mouse ones (WM_SETFOCUS, WM_KILLFOCUS, WM_KEYDOWN), because PsToggle is the first focusable
 ' control in the family and those now carry real state.
 '
 ' CAUTION: the result is IGNORED for three messages.
 '   WM_LBUTTONUP        - the control holds mouse capture across a press and the up-message
 '                         is what releases it: a callback that suppressed it would strand
 '                         capture and route every subsequent click to this control (the
-'                         CListBox bug recorded in Learnings.md). Suppressing
+'                         PsListBox bug recorded in Learnings.md). Suppressing
 '                         WM_LBUTTONDOWN suppresses the press, never the capture bookkeeping.
 '   WM_SETFOCUS         - focus is a FACT the system reports, not an action to veto. The
 '   WM_KILLFOCUS          state is already updated by the time you are called; there is
 '                         nothing left to suppress. A host that does not want the control
 '                         focusable must not make it a tabstop.
 ' For every other message TRUE suppresses the control's default handling.
-type TOG_MessageCallbackFunc as function( byval m as CTOGGLE_MESSAGEINFO ptr ) as boolean
+type TOG_MessageCallbackFunc as function( byval m as PSTOGGLE_MESSAGEINFO ptr ) as boolean
 
 ' The checked state changed through USER interaction -- a completed click, or Space/Enter.
-' Fired AFTER the control's state is updated, so CToggle_GetChecked() = isChecked. The
-' programmatic CToggle_SetChecked does NOT fire this (Win32's BM_SETCHECK / BN_CLICKED
+' Fired AFTER the control's state is updated, so PsToggle_GetChecked() = isChecked. The
+' programmatic PsToggle_SetChecked does NOT fire this (Win32's BM_SETCHECK / BN_CLICKED
 ' precedent), which also makes it safe to call SetChecked from inside the handler.
 type TOG_CheckChangedCallbackSub as sub( byval hToggle as HWND, byval isChecked as boolean )
 
 
-type CTOGGLE
+type PSTOGGLE
     hWin           as HWND
     idc_Toggle     as long = 0
     ' --- State. All single-valued: there is exactly one of this control, so unlike the
@@ -169,17 +169,17 @@ type CTOGGLE
     '     WM_DESTROY releases, and no callback may suppress an up-message.
     '     There is no bPressedInside flag: "the cursor is still inside" is exactly isHot,
     '     and hover tracking already maintains that through the capture. ---
-    colors         as CTOGGLE_COLORS
+    colors         as PSTOGGLE_COLORS
     ' --- Layout. Rects are DERIVED, never set from outside; LayoutToggle() owns them.
     '     Layout is lazy: mutators mark it dirty, the next paint (or any rect query) runs
     '     it. There is NO font and NO measuring pass -- alone in the family, LayoutToggle
     '     never takes a DC, because nothing about this control's geometry is measured. ---
-    nTrackWidth    as long = CTOGGLE_DEFAULT_TRACKW       ' DPI-scaled at Create
-    nTrackHeight   as long = CTOGGLE_DEFAULT_TRACKH       ' DPI-scaled at Create
-    nKnobInset     as long = CTOGGLE_DEFAULT_KNOBINSET    ' DPI-scaled at Create
-    nBorderThick   as long = CTOGGLE_DEFAULT_BORDERTHICK  ' NOT DPI-scaled
-    nFocusGap      as long = CTOGGLE_DEFAULT_FOCUSGAP     ' DPI-scaled at Create
-    nFocusThick    as long = CTOGGLE_DEFAULT_FOCUSTHICK   ' NOT DPI-scaled
+    nTrackWidth    as long = PSTOGGLE_DEFAULT_TRACKW       ' DPI-scaled at Create
+    nTrackHeight   as long = PSTOGGLE_DEFAULT_TRACKH       ' DPI-scaled at Create
+    nKnobInset     as long = PSTOGGLE_DEFAULT_KNOBINSET    ' DPI-scaled at Create
+    nBorderThick   as long = PSTOGGLE_DEFAULT_BORDERTHICK  ' NOT DPI-scaled
+    nFocusGap      as long = PSTOGGLE_DEFAULT_FOCUSGAP     ' DPI-scaled at Create
+    nFocusThick    as long = PSTOGGLE_DEFAULT_FOCUSTHICK   ' NOT DPI-scaled
     nJustify       as long = TOG_JUSTIFY_CENTER
     rcTrack        as RECT               ' derived
     rcKnob         as RECT               ' derived; depends on isChecked
@@ -200,7 +200,7 @@ end type
 ' The distance the visual bounds extend beyond the track on every side. The focus ring is
 ' drawn INSIDE this band, so reserving it unconditionally -- whether or not the control
 ' currently has focus -- is what stops the pill jumping when focus arrives.
-function CTOGGLE.RingPad() as long
+function PSTOGGLE.RingPad() as long
     return this.nFocusGap + this.nFocusThick
 end function
 
@@ -208,7 +208,7 @@ end function
 ' track HEIGHT and the inset, never the width. Clamped at 1: a host that sets an inset
 ' larger than half the track height gets a degenerate-but-drawable knob rather than an
 ' Ellipse with a negative extent.
-function CTOGGLE.KnobDiameter() as long
+function PSTOGGLE.KnobDiameter() as long
     dim as long dia = this.nTrackHeight - (2 * this.nKnobInset)
     if dia < 1 then dia = 1
     return dia
@@ -241,13 +241,13 @@ end function
 '
 ' OVERFLOW: when the visual does not fit the client the justification degrades to LEFT and
 ' the tail clips at the client edge. Rects are computed HONESTLY rather than squeezed
-' (CIconPanel's and CTabBar's rule), so the pill keeps its proper shape and only the part
+' (PsIconPanel's and PsTabBar's rule), so the pill keeps its proper shape and only the part
 ' past the edge is lost. The same applies vertically: a client shorter than the track gives
 ' a negative top, and the pill is clipped top and bottom rather than being deformed.
 '
 ' NO DC IS TAKEN. There is no text and no font, so nothing here is measured -- every number
 ' above is authored or derived. This is the only LayoutXxx in the family that can say that.
-sub CTOGGLE.LayoutToggle()
+sub PSTOGGLE.LayoutToggle()
     this.bLayoutDirty = false
     if this.hWin = 0 then exit sub
 
@@ -258,7 +258,7 @@ sub CTOGGLE.LayoutToggle()
 
     ' No geometry yet (created 0x0, sized only once the host shows us). Placement is
     ' impossible, so leave the rects alone and ask to be run again. Note that
-    ' CToggle_GetIdealSize deliberately does NOT come through here -- it is computed
+    ' PsToggle_GetIdealSize deliberately does NOT come through here -- it is computed
     ' straight from the scalars, because a host calls it to decide how big to make the
     ' control in the first place and returning 0 until it had already been sized would be a
     ' chicken-and-egg trap.
@@ -303,13 +303,13 @@ end sub
 ' Forget any live press WITHOUT touching the capture. Releasing capture is the WndProc's job,
 ' and only on the up-message or WM_DESTROY -- doing it here would let a callback strand or
 ' double-release it.
-sub CTOGGLE.CancelPress()
+sub PSTOGGLE.CancelPress()
     this.isPressed = false
 end sub
 
 ' Mark the layout stale and request a repaint. Every mutator routes through here, which is
 ' what makes layout lazy.
-sub CTOGGLE.Refresh()
+sub PSTOGGLE.Refresh()
     this.bLayoutDirty = true
     ' Repaint WITH background erase so a region vacated by a shrinking pill is cleared.
     if this.hWin then InvalidateRect( this.hWin, NULL, TRUE )
@@ -341,14 +341,14 @@ end sub
 '   dialog manager.
 '
 ' ANTIALIASING
-'   The built-in painter draws through CBufferPaint, which renders geometry with GDI+,
+'   The built-in painter draws through PsBufferPaint, which renders geometry with GDI+,
 '   so the pill's shoulders and the knob's rim are antialiased. A paint callback replaces
 '   the built-in painter entirely -- but it gets the same buffer, so it inherits the same
 '   antialiased primitives rather than having to hand-roll smoothing the way the old
 '   supersampled painter did.
 '
 ' THE CONTROL HANDLE
-'   Every CToggle_* function takes the handle returned by CToggle_Create().
+'   Every PsToggle_* function takes the handle returned by PsToggle_Create().
 '
 '   The handle is a real HWND on purpose (not an opaque type): callers legitimately need to
 '   treat the control as a window, e.g. SetWindowPos() to place and size it.
@@ -356,7 +356,7 @@ end sub
 ' LIFETIME
 '   The control frees itself when its window is destroyed. It owns no host resources.
 '
-' THERE IS NO CToggle_HitTest
+' THERE IS NO PsToggle_HitTest
 '   The whole client rect is the hit area, so a hit test could only ever be
 '   PtInRect(client) -- a function that returns TRUE for exactly the points the caller
 '   already knows are inside. Its absence is a decision, not an omission.
@@ -365,9 +365,9 @@ end sub
 ' Creation
 '   CtrlID becomes the control window's id (GWLP_ID), so hosts can find it with GetDlgItem.
 '   There are no child controls. The control is created zero-sized: size it with
-'   CToggle_GetIdealSize and position it with SetWindowPos().
+'   PsToggle_GetIdealSize and position it with SetWindowPos().
 ' ----------------------------------------------------------------------------------------
-declare function CToggle_Create( byval hWndParent as HWND, byval CtrlID as long ) as HWND
+declare function PsToggle_Create( byval hWndParent as HWND, byval CtrlID as long ) as HWND
 
 ' ----------------------------------------------------------------------------------------
 ' State.
@@ -381,12 +381,12 @@ declare function CToggle_Create( byval hWndParent as HWND, byval CtrlID as long 
 '   It does NOT change the checked state: a disabled ON toggle still reads as ON, which is
 '   why the color struct carries separate disabled colors for each state.
 ' ----------------------------------------------------------------------------------------
-declare function CToggle_GetChecked( byval hToggle as HWND ) as boolean
-declare sub      CToggle_SetChecked( byval hToggle as HWND, byval isChecked as boolean )
-declare function CToggle_GetEnabled( byval hToggle as HWND ) as boolean
-declare sub      CToggle_SetEnabled( byval hToggle as HWND, byval isEnabled as boolean )
-declare function CToggle_GetFocused( byval hToggle as HWND ) as boolean
-declare sub      CToggle_Refresh( byval hToggle as HWND )
+declare function PsToggle_GetChecked( byval hToggle as HWND ) as boolean
+declare sub      PsToggle_SetChecked( byval hToggle as HWND, byval isChecked as boolean )
+declare function PsToggle_GetEnabled( byval hToggle as HWND ) as boolean
+declare sub      PsToggle_SetEnabled( byval hToggle as HWND, byval isEnabled as boolean )
+declare function PsToggle_GetFocused( byval hToggle as HWND ) as boolean
+declare sub      PsToggle_Refresh( byval hToggle as HWND )
 
 ' ----------------------------------------------------------------------------------------
 ' Layout.  ALL setters take RAW PIXELS -- the caller DPI-scales (the family rule; only the
@@ -408,27 +408,27 @@ declare sub      CToggle_Refresh( byval hToggle as HWND )
 '   The rect queries force a pending layout, so results are always current. They return
 '   FALSE if the control has no geometry yet (created but never sized).
 ' ----------------------------------------------------------------------------------------
-declare sub      CToggle_GetTrackSize( byval hToggle as HWND, byref nTrackWidth as long, byref nTrackHeight as long )
-declare sub      CToggle_SetTrackSize( byval hToggle as HWND, byval nTrackWidth as long, byval nTrackHeight as long )
-declare function CToggle_GetKnobInset( byval hToggle as HWND ) as long
-declare sub      CToggle_SetKnobInset( byval hToggle as HWND, byval nKnobInset as long )
-declare function CToggle_GetBorderThickness( byval hToggle as HWND ) as long
-declare sub      CToggle_SetBorderThickness( byval hToggle as HWND, byval nThickness as long )
-declare sub      CToggle_GetFocusRing( byval hToggle as HWND, byref nGap as long, byref nThickness as long )
-declare sub      CToggle_SetFocusRing( byval hToggle as HWND, byval nGap as long, byval nThickness as long )
-declare function CToggle_GetJustify( byval hToggle as HWND ) as long
-declare sub      CToggle_SetJustify( byval hToggle as HWND, byval nJustify as long )
-declare sub      CToggle_GetIdealSize( byval hToggle as HWND, byref nWidth as long, byref nHeight as long )
-declare function CToggle_GetTrackRect( byval hToggle as HWND, byref rc as RECT ) as boolean
-declare function CToggle_GetKnobRect( byval hToggle as HWND, byref rc as RECT ) as boolean
-declare function CToggle_GetVisualRect( byval hToggle as HWND, byref rc as RECT ) as boolean
+declare sub      PsToggle_GetTrackSize( byval hToggle as HWND, byref nTrackWidth as long, byref nTrackHeight as long )
+declare sub      PsToggle_SetTrackSize( byval hToggle as HWND, byval nTrackWidth as long, byval nTrackHeight as long )
+declare function PsToggle_GetKnobInset( byval hToggle as HWND ) as long
+declare sub      PsToggle_SetKnobInset( byval hToggle as HWND, byval nKnobInset as long )
+declare function PsToggle_GetBorderThickness( byval hToggle as HWND ) as long
+declare sub      PsToggle_SetBorderThickness( byval hToggle as HWND, byval nThickness as long )
+declare sub      PsToggle_GetFocusRing( byval hToggle as HWND, byref nGap as long, byref nThickness as long )
+declare sub      PsToggle_SetFocusRing( byval hToggle as HWND, byval nGap as long, byval nThickness as long )
+declare function PsToggle_GetJustify( byval hToggle as HWND ) as long
+declare sub      PsToggle_SetJustify( byval hToggle as HWND, byval nJustify as long )
+declare sub      PsToggle_GetIdealSize( byval hToggle as HWND, byref nWidth as long, byref nHeight as long )
+declare function PsToggle_GetTrackRect( byval hToggle as HWND, byref rc as RECT ) as boolean
+declare function PsToggle_GetKnobRect( byval hToggle as HWND, byref rc as RECT ) as boolean
+declare function PsToggle_GetVisualRect( byval hToggle as HWND, byref rc as RECT ) as boolean
 
 ' ----------------------------------------------------------------------------------------
 ' Appearance.  SetColors copies the whole struct. GetColors fills one out, so the
 ' read-modify-write "change one color" idiom is Get, assign, Set.
 ' ----------------------------------------------------------------------------------------
-declare sub      CToggle_GetColors( byval hToggle as HWND, byval pColors as CTOGGLE_COLORS ptr )
-declare sub      CToggle_SetColors( byval hToggle as HWND, byval pColors as CTOGGLE_COLORS ptr )
+declare sub      PsToggle_GetColors( byval hToggle as HWND, byval pColors as PSTOGGLE_COLORS ptr )
+declare sub      PsToggle_SetColors( byval hToggle as HWND, byval pColors as PSTOGGLE_COLORS ptr )
 
 ' ----------------------------------------------------------------------------------------
 ' Callbacks.  See the type declarations above for each signature and contract.
@@ -438,6 +438,6 @@ declare sub      CToggle_SetColors( byval hToggle as HWND, byval pColors as CTOG
 '                          default handling (IGNORED for WM_LBUTTONUP -- capture-critical).
 '   CheckChangedCallback - the USER flipped the toggle. Programmatic SetChecked is silent.
 ' ----------------------------------------------------------------------------------------
-declare sub      CToggle_SetPaintCallback( byval hToggle as HWND, byval usersub as TOG_PaintCallbackSub )
-declare sub      CToggle_SetMessageCallback( byval hToggle as HWND, byval userfunc as TOG_MessageCallbackFunc )
-declare sub      CToggle_SetCheckChangedCallback( byval hToggle as HWND, byval usersub as TOG_CheckChangedCallbackSub )
+declare sub      PsToggle_SetPaintCallback( byval hToggle as HWND, byval usersub as TOG_PaintCallbackSub )
+declare sub      PsToggle_SetMessageCallback( byval hToggle as HWND, byval userfunc as TOG_MessageCallbackFunc )
+declare sub      PsToggle_SetCheckChangedCallback( byval hToggle as HWND, byval usersub as TOG_CheckChangedCallbackSub )

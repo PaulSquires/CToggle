@@ -1,4 +1,4 @@
-'    CToggle - reusable owner-drawn toggle switch control
+'    PsToggle - reusable owner-drawn toggle switch control
 '    Copyright (C) 2016-2026 Paul Squires, PlanetSquires Software
 '
 '    This program is free software: you can redistribute it and/or modify
