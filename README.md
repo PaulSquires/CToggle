@@ -15,6 +15,14 @@ positioned by you. There is no animation: the knob is at one end or the other.
 
 ---
 
+## What it looks like
+
+![The CToggle demo](CToggle.png)
+
+Eight rows: ON with the focus ring, OFF, custom green colours, disabled-but-still-ON, a square switch from a host painter, and the three justifications inside a deliberately wide cell. The pill and knob are drawn through `CBufferPaint`'s GDI+ primitives, which is why the shoulders and the knob rim are smooth at this size.
+
+---
+
 ## Requirements
 
 **Files to copy into your project:**
