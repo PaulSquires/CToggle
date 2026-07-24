@@ -1,5 +1,5 @@
 #include once "frmMain.bi"
-#include once "CBufferPaint.bi"
+#include once "PsBufferPaint.bi"
 
 
 ' One settings row: the label the form draws, and the toggle that sits at its right.
@@ -43,10 +43,10 @@ end function
 '
 ' The form draws the labels and the hairlines; each toggle paints its own cell. There is no
 ' container window between them -- the same arrangement tiko's Output panel uses for its
-' CSelectBar + CIconPanel pair.
+' PsSelectBar + PsIconPanel pair.
 ' ========================================================================================
 function frmMain_OnPaint( byval hwnd as HWND ) as LRESULT
-    dim as CBufferPaint b
+    dim as PsBufferPaint b
 
     b.BeginDoubleBuffer(hwnd)
     b.SetBackColor( theme.BackColor )
@@ -101,7 +101,7 @@ sub frmMain_PositionToggles( byval hwnd as HWND )
         dim as RECT rcRow = RowRect( hwnd, i )
 
         dim as long iw, ih
-        CToggle_GetIdealSize( ghToggle(i), iw, ih )
+        PsToggle_GetIdealSize( ghToggle(i), iw, ih )
 
         ' Rows 5..7 demonstrate justification, so they get the whole wide cell. The rest are
         ' sized exactly to the switch and right-aligned against the margin.
@@ -217,10 +217,10 @@ end function
 
 
 ' ========================================================================================
-' CToggle_CheckChangedCallback -- the USER flipped a switch, by click or by Space/Enter.
-' Never fires for the programmatic CToggle_SetChecked, which is exactly the point.
+' PsToggle_CheckChangedCallback -- the USER flipped a switch, by click or by Space/Enter.
+' Never fires for the programmatic PsToggle_SetChecked, which is exactly the point.
 ' ========================================================================================
-sub CToggle_CheckChangedCallback( byval hCtl as HWND, byval isChecked as boolean )
+sub PsToggle_CheckChangedCallback( byval hCtl as HWND, byval isChecked as boolean )
     gSilentCbCount += 1
     dim as string s
     s = "checkchanged  toggle=" & ToggleName(hCtl) & "  checked=" & str(isChecked)
@@ -229,9 +229,9 @@ end sub
 
 
 ' ========================================================================================
-' CToggle_MessageCallback -- right-click and focus changes are reported, never acted on.
+' PsToggle_MessageCallback -- right-click and focus changes are reported, never acted on.
 ' ========================================================================================
-function CToggle_MessageCallback( byval m as CTOGGLE_MESSAGEINFO ptr ) as boolean
+function PsToggle_MessageCallback( byval m as PSTOGGLE_MESSAGEINFO ptr ) as boolean
     select case m->uMsg
     case WM_RBUTTONUP
         dim as string s = "rclick        toggle=" & ToggleName(m->hToggle)
@@ -247,20 +247,20 @@ end function
 
 
 ' ========================================================================================
-' CToggle_SquarePaintCallback -- row 4's own renderer, REPLACING the built-in painter.
+' PsToggle_SquarePaintCallback -- row 4's own renderer, REPLACING the built-in painter.
 '
 ' It deliberately draws a SQUARE switch, which makes the point that a callback owns the whole
 ' look -- the pill and the knob are the built-in painter's choice, not the control's.
 '
 ' (This comment used to add that a callback also "gives up the supersampling pass the built-in
-' painter runs". That has not been true since CBufferPaint took over rendering: the
+' painter runs". That has not been true since PsBufferPaint took over rendering: the
 ' supersampled tile is gone, geometry goes through GDI+, and a callback gets exactly the same
 ' antialiased primitives the built-in painter does. Nothing is given up by setting one.)
 '
 ' The control has already filled the client with BackColor, so only the switch itself needs
 ' painting here.
 ' ========================================================================================
-sub CToggle_SquarePaintCallback( byval p as CTOGGLE_PAINTINFO ptr )
+sub PsToggle_SquarePaintCallback( byval p as PSTOGGLE_PAINTINFO ptr )
 
     dim as COLORREF clrTrack = theme.BackColorHot
     dim as COLORREF clrKnob  = theme.ForeColor
@@ -301,7 +301,7 @@ end sub
 
 
 ' ========================================================================================
-' Geometry self-test (run with CTOGGLE_SELFTEST=1).
+' Geometry self-test (run with PSTOGGLE_SELFTEST=1).
 '
 ' Every number is asserted, never eyeballed -- CLAUDE.md's rule, and Learnings.md records
 ' several "verifications" that were invalid because they were done by eye. Expectations are
@@ -352,26 +352,26 @@ end sub
 ' smoothed knob yields many tones between the knob colour and the track colour, and an
 ' unsmoothed one yields exactly two.
 '
-' It drives the SHIPPED code path (CToggle_RenderDefault) into an offscreen buffer, so what
+' It drives the SHIPPED code path (PsToggle_RenderDefault) into an offscreen buffer, so what
 ' is measured is what a WM_PAINT would have produced.
 ' ========================================================================================
 private function SelfTest_KnobEdgeTones( byval h as HWND ) as long
-    dim as CTOGGLE ptr pTog = GetTogglePointer(h)
+    dim as PSTOGGLE ptr pTog = GetTogglePointer(h)
     if pTog = 0 then return 0
 
     dim as RECT rcClient, rcKnob
     GetClientRect( h, @rcClient )
-    if CToggle_GetKnobRect( h, rcKnob ) = false then return 0
+    if PsToggle_GetKnobRect( h, rcKnob ) = false then return 0
 
     dim as HDC hdc = GetDC(h)
     if hdc = 0 then return 0
 
-    dim as CBufferPaint b
+    dim as PsBufferPaint b
     b.BeginDoubleBuffer( h, hdc, rcClient )
     b.SetBackColor( pTog->colors.BackColor )
     b.PaintClientRect()
 
-    dim p as CTOGGLE_PAINTINFO
+    dim p as PSTOGGLE_PAINTINFO
     p.hToggle   = h
     p.b         = @b
     p.rcClient  = rcClient
@@ -380,7 +380,7 @@ private function SelfTest_KnobEdgeTones( byval h as HWND ) as long
     p.rcVisual  = pTog->rcVisual
     p.isChecked = pTog->isChecked
     p.isEnabled = true
-    CToggle_RenderDefault( pTog, @b, @p )
+    PsToggle_RenderDefault( pTog, @b, @p )
 
     ' Collect distinct colours over the knob, one pixel of margin each way so the rim is
     ' fully inside the scanned region.
@@ -414,9 +414,9 @@ private function SelfTest_KnobEdgeTones( byval h as HWND ) as long
 end function
 
 
-sub CToggle_SelfTest()
+sub PsToggle_SelfTest()
 
-    dim as HWND h = CToggle_Create( HWND_FRMMAIN, IDC_FRMMAIN_TOGGLE_TEST )
+    dim as HWND h = PsToggle_Create( HWND_FRMMAIN, IDC_FRMMAIN_TOGGLE_TEST )
     if h = 0 then
         print "FAIL  selftest could not create a control"
         gFailCount += 1
@@ -425,9 +425,9 @@ sub CToggle_SelfTest()
     dim pw as CWindow ptr = AfxCWindowPtr(h)
 
     dim as long tw, th, inset, fgap, fthick
-    CToggle_GetTrackSize( h, tw, th )
-    inset  = CToggle_GetKnobInset( h )
-    CToggle_GetFocusRing( h, fgap, fthick )
+    PsToggle_GetTrackSize( h, tw, th )
+    inset  = PsToggle_GetKnobInset( h )
+    PsToggle_GetFocusRing( h, fgap, fthick )
     dim as long ringPad = fgap + fthick
     dim as long knobDia = th - (2 * inset)
 
@@ -436,34 +436,34 @@ sub CToggle_SelfTest()
 
     ' ---- Create-time defaults ----------------------------------------------------------
     SelfTest_Check( "track size is DPI-scaled", _
-        (tw = pw->ScaleX(CTOGGLE_DEFAULT_TRACKW)) andalso (th = pw->ScaleY(CTOGGLE_DEFAULT_TRACKH)), _
+        (tw = pw->ScaleX(PSTOGGLE_DEFAULT_TRACKW)) andalso (th = pw->ScaleY(PSTOGGLE_DEFAULT_TRACKH)), _
         "tw=" & str(tw) & " th=" & str(th) )
 
     SelfTest_Check( "knob inset is DPI-scaled", _
-        inset = pw->ScaleY(CTOGGLE_DEFAULT_KNOBINSET), "inset=" & str(inset) )
+        inset = pw->ScaleY(PSTOGGLE_DEFAULT_KNOBINSET), "inset=" & str(inset) )
 
     SelfTest_Check( "border thickness is NOT DPI-scaled", _
-        CToggle_GetBorderThickness(h) = CTOGGLE_DEFAULT_BORDERTHICK, _
-        "border=" & str(CToggle_GetBorderThickness(h)) )
+        PsToggle_GetBorderThickness(h) = PSTOGGLE_DEFAULT_BORDERTHICK, _
+        "border=" & str(PsToggle_GetBorderThickness(h)) )
 
     SelfTest_Check( "focus thickness is NOT DPI-scaled", _
-        fthick = CTOGGLE_DEFAULT_FOCUSTHICK, "fthick=" & str(fthick) )
+        fthick = PSTOGGLE_DEFAULT_FOCUSTHICK, "fthick=" & str(fthick) )
 
     SelfTest_Check( "default justify is CENTER", _
-        CToggle_GetJustify(h) = TOG_JUSTIFY_CENTER, "justify=" & str(CToggle_GetJustify(h)) )
+        PsToggle_GetJustify(h) = TOG_JUSTIFY_CENTER, "justify=" & str(PsToggle_GetJustify(h)) )
 
     ' ---- ideal size is usable BEFORE the control has ever been sized --------------------
-    CToggle_GetIdealSize( h, iw, ih )
+    PsToggle_GetIdealSize( h, iw, ih )
     SelfTest_Check( "ideal size valid before sizing", _
         (iw = tw + (2 * ringPad)) andalso (ih = th + (2 * ringPad)), _
         "ideal=" & str(iw) & "x" & str(ih) )
 
     SelfTest_Check( "rect query returns FALSE before sizing", _
-        CToggle_GetTrackRect( h, rcT ) = false, "" )
+        PsToggle_GetTrackRect( h, rcT ) = false, "" )
 
     ' ---- vertical centring, odd client height ------------------------------------------
     SelfTest_SizeTo( h, 200, 61, cw, ch )
-    CToggle_GetTrackRect( h, rcT )
+    PsToggle_GetTrackRect( h, rcT )
     SelfTest_Check( "track v-centred (odd client height)", _
         rcT.top = ((ch - th) \ 2), "top=" & str(rcT.top) & " expected=" & str((ch - th) \ 2) )
     SelfTest_Check( "track keeps its authored size", _
@@ -483,31 +483,31 @@ sub CToggle_SelfTest()
     SelfTest_Check( "CENTER x", _
         rcT.left = ((cw - tw) \ 2), "left=" & str(rcT.left) & " expected=" & str((cw - tw) \ 2) )
 
-    CToggle_SetJustify( h, TOG_JUSTIFY_LEFT )
-    CToggle_GetTrackRect( h, rcT )
+    PsToggle_SetJustify( h, TOG_JUSTIFY_LEFT )
+    PsToggle_GetTrackRect( h, rcT )
     SelfTest_Check( "LEFT x = ringPad", _
         rcT.left = ringPad, "left=" & str(rcT.left) & " ringPad=" & str(ringPad) )
 
-    CToggle_SetJustify( h, TOG_JUSTIFY_RIGHT )
-    CToggle_GetTrackRect( h, rcT )
+    PsToggle_SetJustify( h, TOG_JUSTIFY_RIGHT )
+    PsToggle_GetTrackRect( h, rcT )
     SelfTest_Check( "RIGHT x = clientW - ringPad", _
         rcT.right = (cw - ringPad), "right=" & str(rcT.right) & " expected=" & str(cw - ringPad) )
 
     ' ---- overflow degrades to LEFT (still RIGHT-justified) -----------------------------
     SelfTest_SizeTo( h, tw + (2 * ringPad) - 6, 60, cw, ch )
-    CToggle_GetTrackRect( h, rcT )
+    PsToggle_GetTrackRect( h, rcT )
     SelfTest_Check( "overflow degrades to LEFT", _
         rcT.left = ringPad, "clientW=" & str(cw) & " left=" & str(rcT.left) )
 
     ' ---- vertical centring, even client height -----------------------------------------
-    CToggle_SetJustify( h, TOG_JUSTIFY_CENTER )
+    PsToggle_SetJustify( h, TOG_JUSTIFY_CENTER )
     SelfTest_SizeTo( h, 200, 60, cw, ch )
-    CToggle_GetTrackRect( h, rcT )
+    PsToggle_GetTrackRect( h, rcT )
     SelfTest_Check( "track v-centred (even client height)", _
         rcT.top = ((ch - th) \ 2), "top=" & str(rcT.top) & " expected=" & str((ch - th) \ 2) )
 
     ' ---- the knob ----------------------------------------------------------------------
-    CToggle_GetKnobRect( h, rcKoff )
+    PsToggle_GetKnobRect( h, rcKoff )
     SelfTest_Check( "knob diameter = trackH - 2*inset", _
         ((rcKoff.right - rcKoff.left) = knobDia) andalso ((rcKoff.bottom - rcKoff.top) = knobDia), _
         "knob=" & str(rcKoff.right - rcKoff.left) & "x" & str(rcKoff.bottom - rcKoff.top) & " expected=" & str(knobDia) )
@@ -519,8 +519,8 @@ sub CToggle_SelfTest()
     SelfTest_Check( "knob OFF sits at the left end", _
         rcKoff.left = (rcT.left + inset), "left=" & str(rcKoff.left) & " expected=" & str(rcT.left + inset) )
 
-    CToggle_SetChecked( h, true )
-    CToggle_GetKnobRect( h, rcKon )
+    PsToggle_SetChecked( h, true )
+    PsToggle_GetKnobRect( h, rcKon )
     SelfTest_Check( "knob ON sits at the right end", _
         rcKon.right = (rcT.right - inset), "right=" & str(rcKon.right) & " expected=" & str(rcT.right - inset) )
 
@@ -530,69 +530,69 @@ sub CToggle_SelfTest()
 
     ' ---- SetChecked is SILENT ----------------------------------------------------------
     ' The callback increments gSilentCbCount, so "silent" is measured, not assumed.
-    CToggle_SetCheckChangedCallback( h, @CToggle_CheckChangedCallback )
+    PsToggle_SetCheckChangedCallback( h, @PsToggle_CheckChangedCallback )
     dim as long nBefore = gSilentCbCount
-    CToggle_SetChecked( h, false )
-    CToggle_SetChecked( h, true )
+    PsToggle_SetChecked( h, false )
+    PsToggle_SetChecked( h, true )
     SelfTest_Check( "SetChecked fires no change callback", _
         gSilentCbCount = nBefore, "callbacks=" & str(gSilentCbCount - nBefore) )
     SelfTest_Check( "SetChecked still moved the knob", _
-        CToggle_GetChecked(h) = true, "" )
+        PsToggle_GetChecked(h) = true, "" )
 
     ' ---- the visual bounds --------------------------------------------------------------
-    CToggle_GetTrackRect( h, rcT )
-    CToggle_GetVisualRect( h, rcV )
+    PsToggle_GetTrackRect( h, rcT )
+    PsToggle_GetVisualRect( h, rcV )
     SelfTest_Check( "visual = track inflated by ringPad on all four sides", _
         ((rcT.left - rcV.left) = ringPad) andalso ((rcV.right - rcT.right) = ringPad) andalso _
         ((rcT.top - rcV.top) = ringPad) andalso ((rcV.bottom - rcT.bottom) = ringPad), _
         "ringPad=" & str(ringPad) )
 
-    CToggle_GetIdealSize( h, iw, ih )
+    PsToggle_GetIdealSize( h, iw, ih )
     SelfTest_Check( "ideal size = visual size", _
         (iw = (rcV.right - rcV.left)) andalso (ih = (rcV.bottom - rcV.top)), _
         "ideal=" & str(iw) & "x" & str(ih) & " visual=" & str(rcV.right - rcV.left) & "x" & str(rcV.bottom - rcV.top) )
 
     ' ---- mutators re-lay out ------------------------------------------------------------
-    CToggle_SetTrackSize( h, 60, 30 )
-    CToggle_GetTrackRect( h, rcT )
+    PsToggle_SetTrackSize( h, 60, 30 )
+    PsToggle_GetTrackRect( h, rcT )
     SelfTest_Check( "SetTrackSize re-lays out", _
         ((rcT.right - rcT.left) = 60) andalso ((rcT.bottom - rcT.top) = 30), _
         "track=" & str(rcT.right - rcT.left) & "x" & str(rcT.bottom - rcT.top) )
 
-    CToggle_GetKnobRect( h, rcK )
+    PsToggle_GetKnobRect( h, rcK )
     SelfTest_Check( "knob follows the new track height", _
         (rcK.bottom - rcK.top) = (30 - (2 * inset)), _
         "dia=" & str(rcK.bottom - rcK.top) & " expected=" & str(30 - (2 * inset)) )
 
-    CToggle_SetKnobInset( h, 5 )
-    CToggle_GetKnobRect( h, rcK )
+    PsToggle_SetKnobInset( h, 5 )
+    PsToggle_GetKnobRect( h, rcK )
     SelfTest_Check( "SetKnobInset changes the diameter", _
         (rcK.bottom - rcK.top) = 20, "dia=" & str(rcK.bottom - rcK.top) & " expected=20" )
 
-    CToggle_SetFocusRing( h, 6, 2 )
-    CToggle_GetIdealSize( h, iw, ih )
+    PsToggle_SetFocusRing( h, 6, 2 )
+    PsToggle_GetIdealSize( h, iw, ih )
     SelfTest_Check( "focus ring participates in the ideal size", _
         (iw = (60 + 16)) andalso (ih = (30 + 16)), "ideal=" & str(iw) & "x" & str(ih) & " expected=76x46" )
 
     ' ---- enable / disable ---------------------------------------------------------------
-    CToggle_SetEnabled( h, false )
+    PsToggle_SetEnabled( h, false )
     SelfTest_Check( "SetEnabled(false) disables the WINDOW (input cannot sneak past)", _
-        (IsWindowEnabled(h) = 0) andalso (CToggle_GetEnabled(h) = false), _
+        (IsWindowEnabled(h) = 0) andalso (PsToggle_GetEnabled(h) = false), _
         "IsWindowEnabled=" & str(IsWindowEnabled(h)) )
     SelfTest_Check( "a disabled toggle keeps its checked state", _
-        CToggle_GetChecked(h) = true, "" )
-    CToggle_SetEnabled( h, true )
+        PsToggle_GetChecked(h) = true, "" )
+    PsToggle_SetEnabled( h, true )
     SelfTest_Check( "SetEnabled(true) re-enables the window", _
-        (IsWindowEnabled(h) <> 0) andalso (CToggle_GetEnabled(h) = true), "" )
+        (IsWindowEnabled(h) <> 0) andalso (PsToggle_GetEnabled(h) = true), "" )
 
     ' ---- input validation ----------------------------------------------------------------
-    CToggle_SetJustify( h, 99 )
+    PsToggle_SetJustify( h, 99 )
     SelfTest_Check( "SetJustify ignores an out-of-range value", _
-        CToggle_GetJustify(h) = TOG_JUSTIFY_CENTER, "justify=" & str(CToggle_GetJustify(h)) )
+        PsToggle_GetJustify(h) = TOG_JUSTIFY_CENTER, "justify=" & str(PsToggle_GetJustify(h)) )
 
     ' ---- tab navigability ------------------------------------------------------------------
     ' Added 2026-07-23, because this SHIPPED BROKEN. CWindow.Create defaults dwExStyle to
-    ' WS_EX_CONTROLPARENT OR WS_EX_WINDOWEDGE and CToggle_Create passed only dwStyle, so the
+    ' WS_EX_CONTROLPARENT OR WS_EX_WINDOWEDGE and PsToggle_Create passed only dwStyle, so the
     ' control declared itself a container; the dialog manager descended into it, found no
     ' children, and skipped it. Tab never reached a toggle. None of the ~30 geometry assertions
     ' above could see it, because nothing here had ever asked what the dialog manager sees.
@@ -627,7 +627,7 @@ sub CToggle_SelfTest()
     DestroyWindow( h )
 
     dim as string s
-    s = "---- CToggle self-test: " & str(gTestCount) & " assertions, " & str(gFailCount) & " failed ----"
+    s = "---- PsToggle self-test: " & str(gTestCount) & " assertions, " & str(gFailCount) & " failed ----"
     print s
 
 end sub
@@ -660,47 +660,47 @@ function frmMain_Show( byval hWndParent as HWND ) as LRESULT
     gRows(7).wszLabel = "Justify RIGHT   (wide cell)"
 
     for i as long = 0 to TOGGLE_COUNT - 1
-        ghToggle(i) = CToggle_Create( HWND_FRMMAIN, IDC_FRMMAIN_TOGGLE_FIRST + i )
-        CToggle_SetMessageCallback( ghToggle(i), @CToggle_MessageCallback )
-        CToggle_SetCheckChangedCallback( ghToggle(i), @CToggle_CheckChangedCallback )
+        ghToggle(i) = PsToggle_Create( HWND_FRMMAIN, IDC_FRMMAIN_TOGGLE_FIRST + i )
+        PsToggle_SetMessageCallback( ghToggle(i), @PsToggle_MessageCallback )
+        PsToggle_SetCheckChangedCallback( ghToggle(i), @PsToggle_CheckChangedCallback )
     next
 
     ' Row 0 -- default colours, ON. Programmatic, so NO callback line should appear.
-    CToggle_SetChecked( ghToggle(0), true )
+    PsToggle_SetChecked( ghToggle(0), true )
 
     ' Row 1 -- default colours, OFF. Nothing to do.
 
     ' Row 2 -- custom colours: a green ON pill, and an OFF pill with no border at all, which
     ' exercises the nBorderThick = 0 path in the renderer.
-    dim as CTOGGLE_COLORS clrs
-    CToggle_GetColors( ghToggle(2), @clrs )
+    dim as PSTOGGLE_COLORS clrs
+    PsToggle_GetColors( ghToggle(2), @clrs )
     clrs.TrackColorOn            = BGR( 62,140, 90)
     clrs.TrackColorOnHot         = BGR( 78,168,110)
     clrs.TrackBorderColorOn      = BGR( 62,140, 90)
     clrs.TrackBorderColorOnHot   = BGR( 78,168,110)
     clrs.KnobColorOn             = BGR(255,255,255)
     clrs.FocusRingColor          = BGR(120,200,150)
-    CToggle_SetColors( ghToggle(2), @clrs )
-    CToggle_SetTrackSize( ghToggle(2), pWindow->ScaleX(52), pWindow->ScaleY(26) )
-    CToggle_SetKnobInset( ghToggle(2), pWindow->ScaleY(3) )
-    CToggle_SetChecked( ghToggle(2), true )
+    PsToggle_SetColors( ghToggle(2), @clrs )
+    PsToggle_SetTrackSize( ghToggle(2), pWindow->ScaleX(52), pWindow->ScaleY(26) )
+    PsToggle_SetKnobInset( ghToggle(2), pWindow->ScaleY(3) )
+    PsToggle_SetChecked( ghToggle(2), true )
 
     ' Row 3 -- disabled AND checked, which is the case the per-state disabled colours exist
     ' for: it must still read as ON.
-    CToggle_SetChecked( ghToggle(3), true )
-    CToggle_SetEnabled( ghToggle(3), false )
+    PsToggle_SetChecked( ghToggle(3), true )
+    PsToggle_SetEnabled( ghToggle(3), false )
 
     ' Row 4 -- the built-in painter replaced wholesale.
-    CToggle_SetPaintCallback( ghToggle(4), @CToggle_SquarePaintCallback )
+    PsToggle_SetPaintCallback( ghToggle(4), @PsToggle_SquarePaintCallback )
 
     ' Rows 5..7 -- the three justifications, in a cell far wider than the switch.
-    CToggle_SetJustify( ghToggle(5), TOG_JUSTIFY_LEFT )
-    CToggle_SetJustify( ghToggle(6), TOG_JUSTIFY_CENTER )
-    CToggle_SetJustify( ghToggle(7), TOG_JUSTIFY_RIGHT )
-    CToggle_SetChecked( ghToggle(7), true )
+    PsToggle_SetJustify( ghToggle(5), TOG_JUSTIFY_LEFT )
+    PsToggle_SetJustify( ghToggle(6), TOG_JUSTIFY_CENTER )
+    PsToggle_SetJustify( ghToggle(7), TOG_JUSTIFY_RIGHT )
+    PsToggle_SetChecked( ghToggle(7), true )
 
     dim as long iw, ih
-    CToggle_GetIdealSize( ghToggle(0), iw, ih )
+    PsToggle_GetIdealSize( ghToggle(0), iw, ih )
     dim as string s = "default ideal size: " & str(iw) & "x" & str(ih)
     print s
 
@@ -709,7 +709,7 @@ function frmMain_Show( byval hWndParent as HWND ) as LRESULT
         ShowWindow( ghToggle(i), SW_SHOW )
     next
 
-    if environ("CTOGGLE_SELFTEST") = "1" then CToggle_SelfTest()
+    if environ("PSTOGGLE_SELFTEST") = "1" then PsToggle_SelfTest()
 
     UpdateWindow( pWindow->hWindow )
     ShowWindow( pWindow->hWindow, SW_SHOW )
@@ -731,7 +731,7 @@ function frmMain_Show( byval hWndParent as HWND ) as LRESULT
         ' Processes accelerator keys for menu commands
         if (pWindow->AccelHandle = 0) orelse (TranslateAccelerator(pWindow->hWindow, pWindow->AccelHandle, @uMsg) = 0) then
 
-            ' IsDialogMessage is what makes Tab move between the toggles -- CToggle is the
+            ' IsDialogMessage is what makes Tab move between the toggles -- PsToggle is the
             ' first control in the family that needs it. A host without it still gets full
             ' mouse behaviour and, once a toggle has focus, Space and Enter.
             if IsDialogMessage(pWindow->hWindow, @uMsg) = 0 then
