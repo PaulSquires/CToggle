@@ -627,6 +627,48 @@ sub PsToggle_SelfTest()
     DestroyWindow( h )
 
     dim as string s
+    ' ------------------------------------------------------------------------------------
+    ' The Enter/Space BEEP.
+    '
+    ' Claiming a key with DLGC_WANTALLKEYS makes IsDialogMessage TranslateMessage it, which
+    ' manufactures a matching WM_CHAR. Nothing consuming that character means it reaches
+    ' DefWindowProc, and the system beeps -- while the keystroke itself works perfectly. The
+    ' beep is the ONLY symptom, so it cannot be heard by any assertion; what is asserted here
+    ' is the mechanism that suppresses it, entirely through messages.
+    '
+    ' The control is DISABLED on purpose: the arm happens before the enabled check, so the
+    ' mechanism is identical while nothing fires a callback or opens a dropdown -- and a
+    ' disabled control that swallows the key owes the character too.
+    scope
+        dim as HWND hBeep = PsToggle_Create( HWND_FRMMAIN, 7803 )
+        PsToggle_SetEnabled( hBeep, false )
+
+        dim as MSG mBeep
+        mBeep.hwnd = hBeep : mBeep.message = WM_CHAR : mBeep.wParam = 13
+
+        SendMessageW( hBeep, WM_KEYDOWN, VK_RETURN, 0 )
+        dim as LRESULT dc1 = SendMessageW( hBeep, WM_GETDLGCODE, 13, cast(LPARAM, @mBeep) )
+        SelfTest_Check( "Enter arms the WM_CHAR swallow that stops the system beep", _
+            (dc1 and DLGC_WANTALLKEYS) <> 0, "dlgcode=&h" & hex(dc1) )
+
+        SendMessageW( hBeep, WM_CHAR, 13, 0 )
+        dim as LRESULT dc2 = SendMessageW( hBeep, WM_GETDLGCODE, 13, cast(LPARAM, @mBeep) )
+        ' The disarm is the proof the WM_CHAR was consumed. The return value cannot be:
+        ' DefWindowProc also returns 0 for WM_CHAR, so it reads the same when it fell through.
+        SelfTest_Check( "...and the WM_CHAR is then swallowed instead of reaching DefWindowProc", _
+            (dc2 and DLGC_WANTALLKEYS) = 0, "dlgcode=&h" & hex(dc2) )
+
+        ' A key we never claimed must leave ordinary characters alone, or a host accelerator
+        ' on a printable key would stop working.
+        SendMessageW( hBeep, WM_KEYDOWN, VK_TAB, 0 )
+        mBeep.wParam = asc("a")
+        dim as LRESULT dc3 = SendMessageW( hBeep, WM_GETDLGCODE, asc("a"), cast(LPARAM, @mBeep) )
+        SelfTest_Check( "an unclaimed key leaves ordinary characters alone", _
+            (dc3 and DLGC_WANTALLKEYS) = 0, "dlgcode=&h" & hex(dc3) )
+
+        DestroyWindow( hBeep )
+    end scope
+
     s = "---- PsToggle self-test: " & str(gTestCount) & " assertions, " & str(gFailCount) & " failed ----"
     print s
 
