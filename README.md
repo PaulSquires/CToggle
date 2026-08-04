@@ -524,3 +524,17 @@ end enum
 | `PSTOGGLE_DEFAULT_BORDERTHICK` | 1 | Default border thickness, never DPI-scaled |
 | `PSTOGGLE_DEFAULT_FOCUSGAP` | 3 | Default focus-ring gap, DPI-scaled at create |
 | `PSTOGGLE_DEFAULT_FOCUSTHICK` | 1 | Default focus-ring thickness, never DPI-scaled |
+
+## Licence
+
+[Mozilla Public License 2.0](LICENSE).
+
+MPL-2.0 is file-level copyleft, chosen deliberately for a drop-in control:
+
+- **You may use this in closed-source software**, commercial or otherwise.
+  §3.2 permits static linking with no additional conditions.
+- **If you modify these files, publish those files' changes.** The obligation is
+  per-file — your own sources are unaffected however tightly they are combined
+  with these.
+- The Exhibit B "Incompatible With Secondary Licenses" notice is **not applied**,
+  which keeps this GPL-compatible.
